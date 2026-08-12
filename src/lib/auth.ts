@@ -4,6 +4,15 @@ import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 
+export async function authorizeCredentials(email: string, password: string) {
+  const user = await prisma.user.findUnique({ where: { email } });
+  if (!user) return null;
+  const valid = await bcrypt.compare(password, user.passwordHash);
+  if (!valid) return null;
+  const claimantProfile = await prisma.claimantProfile.findUnique({ where: { userId: user.id } });
+  return { id: user.id, email: user.email, role: user.role, claimantProfileId: claimantProfile?.id };
+}
+
 export const authOptions: NextAuthOptions = {
   session: { strategy: 'jwt' },
   pages: { signIn: '/claim/login' },
@@ -16,11 +25,7 @@ export const authOptions: NextAuthOptions = {
       },
       async authorize(credentials) {
         if (!credentials?.email || !credentials?.password) return null;
-        const user = await prisma.user.findUnique({ where: { email: credentials.email } });
-        if (!user) return null;
-        const valid = await bcrypt.compare(credentials.password, user.passwordHash);
-        if (!valid) return null;
-        return { id: user.id, email: user.email, role: user.role };
+        return authorizeCredentials(credentials.email, credentials.password);
       },
     }),
   ],
@@ -29,6 +34,7 @@ export const authOptions: NextAuthOptions = {
       if (user) {
         token.id = (user as { id: string }).id;
         token.role = (user as unknown as { role: 'CLAIMANT' | 'CASEWORKER' | 'ADMIN' }).role;
+        token.claimantProfileId = (user as { claimantProfileId?: string }).claimantProfileId;
       }
       return token;
     },
@@ -36,6 +42,7 @@ export const authOptions: NextAuthOptions = {
       if (session.user) {
         session.user.id = token.id as string;
         session.user.role = token.role as 'CLAIMANT' | 'CASEWORKER' | 'ADMIN';
+        session.user.claimantProfileId = token.claimantProfileId as string | undefined;
       }
       return session;
     },
