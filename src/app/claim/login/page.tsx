@@ -24,13 +24,16 @@ export default function ClaimantLoginPage() {
     router.push('/claim/dashboard');
   }
 
+  const emailError = errors.find((e) => e.id === 'email')?.message;
+  const passwordError = errors.find((e) => e.id === 'password')?.message;
+
   return (
     <main id="main-content" className="max-w-md mx-auto p-8">
       <h1 className="text-2xl font-bold mb-4">Log in</h1>
       <ErrorSummary errors={errors} />
       <form onSubmit={handleSubmit} noValidate>
-        <TextField id="email" label="Email address" type="email" value={email} onChange={setEmail} autoComplete="email" required />
-        <TextField id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" required />
+        <TextField id="email" label="Email address" type="email" value={email} onChange={setEmail} autoComplete="email" required error={emailError} />
+        <TextField id="password" label="Password" type="password" value={password} onChange={setPassword} autoComplete="current-password" required error={passwordError} />
         <Button type="submit">Log in</Button>
       </form>
     </main>

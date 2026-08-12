@@ -34,6 +34,9 @@ export default function SignupPage() {
     }
   }
 
+  const emailError = errors.find((e) => e.id === 'email')?.message;
+  const passwordError = errors.find((e) => e.id === 'password')?.message;
+
   return (
     <main id="main-content" className="max-w-md mx-auto p-8">
       <h1 className="text-2xl font-bold mb-4">Create your account</h1>
@@ -47,6 +50,7 @@ export default function SignupPage() {
           onChange={setEmail}
           autoComplete="email"
           required
+          error={emailError}
         />
         <TextField
           id="password"
@@ -56,6 +60,7 @@ export default function SignupPage() {
           onChange={setPassword}
           autoComplete="new-password"
           required
+          error={passwordError}
         />
         <Button type="submit" disabled={submitting}>
           {submitting ? 'Creating account…' : 'Create account'}
