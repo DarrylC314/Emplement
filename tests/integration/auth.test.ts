@@ -1,22 +1,20 @@
-import { describe, it, expect, afterAll, beforeEach } from 'vitest';
+import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { authorizeCredentials } from '@/lib/auth';
 import bcrypt from 'bcryptjs';
 
 describe('authorizeCredentials', () => {
-  let claimantEmail: string;
-  let claimantPassword: string;
+  const claimantEmail = `auth-test-claimant-${Date.now()}@example.com`;
+  const claimantPassword = 'CorrectHorseBattery9';
+  const caseworkerEmail = `auth-test-caseworker-${Date.now()}@example.com`;
+  const caseworkerPassword = 'SecurePassword123';
+
+  let claimantUserId: string;
   let claimantProfileId: string;
-  let caseworkerEmail: string;
-  let caseworkerPassword: string;
+  let caseworkerUserId: string;
 
-  // Setup: Create test users
-  beforeEach(async () => {
-    claimantEmail = `claimant-${Date.now()}@example.com`;
-    claimantPassword = 'CorrectHorseBattery9';
-    caseworkerEmail = `caseworker-${Date.now()}@example.com`;
-    caseworkerPassword = 'SecurePassword123';
-
+  // Setup: Create test users once before all tests
+  beforeAll(async () => {
     // Create a CLAIMANT user with ClaimantProfile
     const claimantUser = await prisma.user.create({
       data: {
@@ -25,19 +23,21 @@ describe('authorizeCredentials', () => {
         role: 'CLAIMANT',
       },
     });
+    claimantUserId = claimantUser.id;
     const claimantProfile = await prisma.claimantProfile.create({
       data: { userId: claimantUser.id },
     });
     claimantProfileId = claimantProfile.id;
 
     // Create a CASEWORKER user (no ClaimantProfile)
-    await prisma.user.create({
+    const caseworkerUser = await prisma.user.create({
       data: {
         email: caseworkerEmail,
         passwordHash: await bcrypt.hash(caseworkerPassword, 12),
         role: 'CASEWORKER',
       },
     });
+    caseworkerUserId = caseworkerUser.id;
   });
 
   it('resolves claimantProfileId for a CLAIMANT user', async () => {
@@ -65,20 +65,15 @@ describe('authorizeCredentials', () => {
   });
 
   afterAll(async () => {
-    // Clean up: Delete claimant profile and users
+    // Clean up: Delete claimant profile and users using stored IDs
     await prisma.claimantProfile.deleteMany({
       where: {
-        userId: {
-          in: [
-            (await prisma.user.findUnique({ where: { email: claimantEmail } }))?.id,
-            (await prisma.user.findUnique({ where: { email: caseworkerEmail } }))?.id,
-          ].filter((id) => id !== undefined) as string[],
-        },
+        userId: { in: [claimantUserId] },
       },
     });
     await prisma.user.deleteMany({
       where: {
-        email: { in: [claimantEmail, caseworkerEmail] },
+        id: { in: [claimantUserId, caseworkerUserId] },
       },
     });
     await prisma.$disconnect();
