@@ -10,7 +10,15 @@ export async function GET(req: Request) {
         { user: { email: { contains: q, mode: 'insensitive' } } },
       ],
     },
-    include: { user: true, claims: true },
+    include: {
+      user: true,
+      claims: {
+        include: {
+          certifications: true,
+          caseNotes: { orderBy: { createdAt: 'desc' } },
+        },
+      },
+    },
     take: 25,
   });
   return Response.json(claimants);
