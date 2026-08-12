@@ -1,0 +1,95 @@
+import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { prisma } from '@/lib/prisma';
+import { POST } from '@/app/api/certifications/route';
+
+describe('POST /api/certifications', () => {
+  let claimId: string;
+  let userId: string;
+  let claimantProfileId: string;
+  const certificationIds: string[] = [];
+
+  beforeAll(async () => {
+    const user = await prisma.user.create({
+      data: { email: `cert-test-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    userId = user.id;
+    const profile = await prisma.claimantProfile.create({
+      data: { userId: user.id, identityVerificationStatus: 'VERIFIED' },
+    });
+    claimantProfileId = profile.id;
+    const claim = await prisma.claim.create({
+      data: {
+        claimantId: profile.id,
+        status: 'ACTIVE',
+        benefitYearStart: new Date('2026-08-11'),
+        benefitYearEnd: new Date('2027-08-11'),
+        weeklyBenefitAmount: 320,
+      },
+    });
+    claimId = claim.id;
+  });
+
+  it('auto-approves a clean certification and writes an audit log', async () => {
+    const req = new Request('http://localhost/api/certifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimId,
+        weekEndingDate: '2026-08-15',
+        ableAndAvailable: true,
+        workedThisWeek: false,
+        earnings: 0,
+        refusedWork: false,
+        jobSearchActivities: [
+          { employerName: 'Acme', contactMethod: 'Online', contactDate: '2026-08-12', position: 'Machinist' },
+          { employerName: 'Beta', contactMethod: 'Phone', contactDate: '2026-08-13', position: 'Operator' },
+          { employerName: 'Gamma', contactMethod: 'In person', contactDate: '2026-08-14', position: 'Technician' },
+        ],
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+    const cert = await res.json();
+    expect(cert.autoDecision).toBe('APPROVED');
+    certificationIds.push(cert.id);
+
+    const log = await prisma.auditLog.findFirst({
+      where: { targetEntity: 'WeeklyCertification', targetId: cert.id },
+    });
+    expect(log).not.toBeNull();
+  });
+
+  it('flags a certification with fewer than 3 job-search contacts', async () => {
+    const req = new Request('http://localhost/api/certifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimId,
+        weekEndingDate: '2026-08-22',
+        ableAndAvailable: true,
+        workedThisWeek: false,
+        earnings: 0,
+        refusedWork: false,
+        jobSearchActivities: [
+          { employerName: 'Acme', contactMethod: 'Online', contactDate: '2026-08-19', position: 'Machinist' },
+        ],
+      }),
+    });
+    const res = await POST(req);
+    const cert = await res.json();
+    expect(cert.autoDecision).toBe('FLAGGED');
+    certificationIds.push(cert.id);
+  });
+
+  afterAll(async () => {
+    await prisma.auditLog.deleteMany({
+      where: { targetEntity: 'WeeklyCertification', targetId: { in: certificationIds } },
+    });
+    await prisma.jobSearchActivity.deleteMany({
+      where: { weeklyCertification: { claimId } },
+    });
+    await prisma.weeklyCertification.deleteMany({ where: { claimId } });
+    await prisma.claim.delete({ where: { id: claimId } });
+    await prisma.claimantProfile.delete({ where: { id: claimantProfileId } });
+    await prisma.user.delete({ where: { id: userId } });
+    await prisma.$disconnect();
+  });
+});
