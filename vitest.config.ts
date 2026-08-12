@@ -6,6 +6,10 @@ export default defineConfig({
   test: {
     environment: 'node',
     include: ['tests/unit/**/*.test.ts', 'tests/integration/**/*.test.ts'],
+    env: {
+      SSN_ENCRYPTION_KEY:
+        '0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
+    },
   },
   resolve: {
     alias: { '@': path.resolve(__dirname, './src') },
