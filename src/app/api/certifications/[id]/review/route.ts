@@ -5,9 +5,23 @@ import { writeAuditLog } from '@/lib/audit';
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const body = await req.json();
   const { caseworkerId, ...rest } = body;
+  if (!caseworkerId) {
+    return Response.json({ error: 'caseworkerId is required' }, { status: 400 });
+  }
+
   const parsed = reviewActionSchema.safeParse(rest);
   if (!parsed.success) {
     return Response.json({ errors: parsed.error.flatten() }, { status: 400 });
+  }
+
+  if (parsed.data.action === 'AMOUNT_ADJUSTED') {
+    const amount = Number(parsed.data.newValue);
+    if (!parsed.data.newValue || !Number.isFinite(amount) || amount <= 0) {
+      return Response.json(
+        { error: 'A valid positive newValue is required when action is AMOUNT_ADJUSTED' },
+        { status: 400 }
+      );
+    }
   }
 
   const certification = await prisma.weeklyCertification.findUnique({
