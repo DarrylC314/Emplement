@@ -21,14 +21,20 @@ export function SessionTimeoutWarning({
   // below for the new expiry instead of only ever firing once at mount.
   const [cycle, setCycle] = useState(0);
 
+  // Depend on the expiry string, not the `data` object itself: SessionProvider's
+  // default refetchOnWindowFocus re-fetches (and returns a brand-new `data`
+  // reference) on every tab/window refocus even when nothing actually changed.
+  // Depending on the whole object would tear down and reschedule this timer on
+  // every refocus, repeatedly deferring the warning from the real session start.
+  const expiresAt = data?.expires;
+
   useEffect(() => {
     // No active session (e.g. an unauthenticated page) -- nothing to warn about.
-    if (!data) return;
+    if (!expiresAt) return;
 
     const warnTimer = setTimeout(() => setVisible(true), sessionLengthMs - warnBeforeMs);
     return () => clearTimeout(warnTimer);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [data, sessionLengthMs, warnBeforeMs, cycle]);
+  }, [expiresAt, sessionLengthMs, warnBeforeMs, cycle]);
 
   async function handleExtend() {
     // Genuinely extend the underlying NextAuth session (JWT strategy: this
