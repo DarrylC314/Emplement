@@ -4,12 +4,6 @@ import { signupSchema } from '@/lib/validation/auth';
 
 export async function POST(req: Request) {
   const body = await req.json();
-  const parsed = signupSchema
-    .extend({ role: signupSchema.shape.email.optional() })
-    .safeParse(body);
-
-  // Re-parse role separately since it's not a claimant-editable field type
-  const role = body.role === 'CASEWORKER' ? 'CASEWORKER' : 'CLAIMANT';
   const credsParsed = signupSchema.safeParse({ email: body.email, password: body.password });
 
   if (!credsParsed.success) {
@@ -23,12 +17,10 @@ export async function POST(req: Request) {
 
   const passwordHash = await bcrypt.hash(credsParsed.data.password, 12);
   const user = await prisma.user.create({
-    data: { email: credsParsed.data.email, passwordHash, role },
+    data: { email: credsParsed.data.email, passwordHash, role: 'CLAIMANT' },
   });
 
-  if (role === 'CLAIMANT') {
-    await prisma.claimantProfile.create({ data: { userId: user.id } });
-  }
+  await prisma.claimantProfile.create({ data: { userId: user.id } });
 
   return Response.json({ id: user.id, email: user.email }, { status: 201 });
 }
