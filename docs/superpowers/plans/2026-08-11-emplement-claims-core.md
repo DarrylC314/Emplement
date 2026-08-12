@@ -6,12 +6,14 @@
 
 **Architecture:** Single Next.js 14 App Router codebase (TypeScript) serving both `/claim` (claimant) and `/staff` (caseworker) route groups against one PostgreSQL database via Prisma. NextAuth.js handles session auth; a separate mocked identity-proofing flow handles SSN/identity collection. A pure-function rules engine drives auto-decisions on weekly certifications, with all sensitive actions audit-logged.
 
-**Tech Stack:** Next.js 14 (App Router), TypeScript, PostgreSQL, Prisma, NextAuth.js, Tailwind CSS, Zod, bcryptjs, Vitest, Playwright, axe-core, Docker Compose.
+**Tech Stack:** Next.js 14 (App Router), TypeScript, PostgreSQL, Prisma, NextAuth.js, Tailwind CSS, Zod, bcryptjs, Vitest, Playwright, axe-core.
+
+> **Environment note (added during Task 2 execution):** this plan originally specified Docker Compose for local Postgres. The build machine has no Docker and no WSL installed; installing Docker Desktop would require enabling WSL2 and a likely reboot. With the human partner's approval, Task 2 was executed against a **native Windows PostgreSQL 16 install** (via `winget install PostgreSQL.PostgreSQL.16`) instead. This satisfies the same underlying constraint — no cloud dependency required to run locally — through a different mechanism. `docker-compose.yml` was not created; see Task 2 below for the actual setup performed.
 
 ## Global Constraints
 
 - Next.js 14+ App Router, TypeScript strict mode throughout.
-- PostgreSQL via Prisma ORM; local dev via `docker-compose` (no cloud dependency required to run locally).
+- PostgreSQL via Prisma ORM; local dev via a native local Postgres instance (no cloud dependency required to run locally) — originally specified as `docker-compose`, changed per the environment note above.
 - NextAuth.js credentials provider for login sessions; identity verification (SSN/personal info) is a distinct mocked flow, not part of login.
 - Tailwind CSS built on a centralized design-token layer — contrast, spacing, and focus styles are not ad hoc per component.
 - WCAG 2.2 AA / Section 508 target on every page: semantic HTML first, ARIA only to fill genuine gaps, 4.5:1 text contrast / 3:1 UI component contrast, never color-alone for status, full keyboard operability, visible focus rings, skip-to-content link.
@@ -373,10 +375,11 @@ git commit -m "Scaffold Next.js + TypeScript + Tailwind project with design toke
 
 ---
 
-## Task 2: Docker Compose + Prisma schema + initial migration
+## Task 2: Native PostgreSQL setup + Prisma schema + initial migration
+
+> Adjusted from the original "Docker Compose" version of this task per the environment note above — this machine has no Docker/WSL. A native PostgreSQL 16 install was used instead, already completed by the controller before this task was dispatched (see Steps 1-2, marked done for the record).
 
 **Files:**
-- Create: `docker-compose.yml`
 - Create: `prisma/schema.prisma`
 - Create: `src/lib/prisma.ts`
 - Test: `tests/integration/schema.test.ts`
@@ -385,35 +388,23 @@ git commit -m "Scaffold Next.js + TypeScript + Tailwind project with design toke
 - Produces: `src/lib/prisma.ts` exports `prisma: PrismaClient` singleton, imported by every task from Task 3 onward that touches the database.
 - Produces: Prisma models `User`, `ClaimantProfile`, `IdentityVerificationAttempt`, `Claim`, `WeeklyCertification`, `JobSearchActivity`, `CaseNote`, `ClaimReviewAction`, `Message`, `AuditLog`, and enums `Role`, `VerificationStatus`, `ClaimStatus`, `AutoDecision`, `ReviewActionType`.
 
-- [ ] **Step 1: Create docker-compose.yml**
+- [x] **Step 1: Install PostgreSQL 16 natively (already done)**
 
-```yaml
-# docker-compose.yml
-services:
-  postgres:
-    image: postgres:16-alpine
-    restart: unless-stopped
-    environment:
-      POSTGRES_USER: emplement
-      POSTGRES_PASSWORD: emplement
-      POSTGRES_DB: emplement_claims
-    ports:
-      - '5433:5432'
-    volumes:
-      - emplement_pg_data:/var/lib/postgresql/data
+Performed by the controller: `winget install --id PostgreSQL.PostgreSQL.16 -e --accept-package-agreements --accept-source-agreements`. Installs to `C:\Program Files\PostgreSQL\16`, registers and starts the `postgresql-x64-16` Windows service on the default port 5432, with superuser `postgres` / password `postgres` (this installer's non-interactive default).
 
-volumes:
-  emplement_pg_data:
+- [x] **Step 2: Create the application role and database (already done)**
+
+Performed by the controller via `psql`:
+```sql
+CREATE USER emplement WITH PASSWORD 'emplement';
+CREATE DATABASE emplement_claims OWNER emplement;
+GRANT ALL PRIVILEGES ON DATABASE emplement_claims TO emplement;
 ```
-
-- [ ] **Step 2: Start Postgres**
-
-Run: `docker compose up -d`
-Expected: `postgres` container reports healthy/running via `docker compose ps`.
+Verified: `psql -U emplement -h localhost -d emplement_claims -c "SELECT current_database(), current_user;"` returns `emplement_claims | emplement`.
 
 - [ ] **Step 3: Copy .env.example to .env**
 
-Run: `cp .env.example .env` (then edit `NEXTAUTH_SECRET` and `SSN_ENCRYPTION_KEY` to real generated values using `openssl rand -base64 32` and `openssl rand -hex 32` respectively)
+Run: `cp .env.example .env` (then edit `NEXTAUTH_SECRET` and `SSN_ENCRYPTION_KEY` to real generated values using `openssl rand -base64 32` and `openssl rand -hex 32` respectively). `DATABASE_URL` in `.env.example` now points at `localhost:5432` (the native install's default port, not 5433) — leave it as-is unless your local instance uses a different port.
 Expected: `.env` exists and is git-ignored.
 
 - [ ] **Step 4: Write the full Prisma schema**
