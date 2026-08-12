@@ -1,0 +1,171 @@
+// prisma/schema.prisma
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CLAIMANT
+  CASEWORKER
+  ADMIN
+}
+
+enum VerificationStatus {
+  PENDING
+  VERIFIED
+  FAILED
+}
+
+enum ClaimStatus {
+  ACTIVE
+  RESTRICTED
+  DENIED
+  CLOSED
+}
+
+enum AutoDecision {
+  APPROVED
+  FLAGGED
+  DENIED
+}
+
+enum ReviewActionType {
+  APPROVED
+  DENIED
+  FLAGGED_FOR_FRAUD
+  AMOUNT_ADJUSTED
+}
+
+model User {
+  id           String   @id @default(cuid())
+  email        String   @unique
+  passwordHash String
+  role         Role
+  createdAt    DateTime @default(now())
+
+  claimantProfile ClaimantProfile?
+  caseNotes       CaseNote[]          @relation("CaseworkerNotes")
+  reviewActions   ClaimReviewAction[] @relation("CaseworkerReviews")
+  sentMessages    Message[]           @relation("CaseworkerMessages")
+  auditLogs       AuditLog[]
+}
+
+model ClaimantProfile {
+  id                         String             @id @default(cuid())
+  userId                     String             @unique
+  user                       User               @relation(fields: [userId], references: [id])
+  legalName                  String?
+  dateOfBirth                DateTime?
+  ssnEncrypted               String?
+  phone                      String?
+  mailingAddress             String?
+  identityVerificationStatus VerificationStatus @default(PENDING)
+  createdAt                  DateTime           @default(now())
+  updatedAt                  DateTime           @updatedAt
+
+  verificationAttempts IdentityVerificationAttempt[]
+  claims               Claim[]
+  messages             Message[]                     @relation("ClaimantMessages")
+}
+
+model IdentityVerificationAttempt {
+  id              String             @id @default(cuid())
+  claimantId      String
+  claimant        ClaimantProfile    @relation(fields: [claimantId], references: [id])
+  mockProvider    String
+  status          VerificationStatus @default(PENDING)
+  submittedAt     DateTime           @default(now())
+  verifiedAt      DateTime?
+  mockReferenceId String
+}
+
+model Claim {
+  id                  String          @id @default(cuid())
+  claimantId          String
+  claimant            ClaimantProfile @relation(fields: [claimantId], references: [id])
+  status              ClaimStatus     @default(ACTIVE)
+  benefitYearStart    DateTime
+  benefitYearEnd      DateTime
+  weeklyBenefitAmount Decimal         @db.Decimal(10, 2)
+  openedDate          DateTime        @default(now())
+
+  certifications WeeklyCertification[]
+  caseNotes      CaseNote[]
+}
+
+model WeeklyCertification {
+  id                 String       @id @default(cuid())
+  claimId            String
+  claim              Claim        @relation(fields: [claimId], references: [id])
+  weekEndingDate     DateTime
+  submittedAt        DateTime     @default(now())
+  ableAndAvailable   Boolean
+  workedThisWeek     Boolean
+  earnings           Decimal      @db.Decimal(10, 2) @default(0)
+  refusedWork        Boolean
+  autoDecision       AutoDecision
+  autoDecisionReason String
+
+  jobSearchActivities JobSearchActivity[]
+  reviewActions       ClaimReviewAction[]
+}
+
+model JobSearchActivity {
+  id                    String              @id @default(cuid())
+  weeklyCertificationId String
+  weeklyCertification   WeeklyCertification @relation(fields: [weeklyCertificationId], references: [id])
+  employerName          String
+  contactMethod         String
+  contactDate           DateTime
+  position              String
+}
+
+model CaseNote {
+  id           String   @id @default(cuid())
+  claimId      String
+  claim        Claim    @relation(fields: [claimId], references: [id])
+  caseworkerId String
+  caseworker   User     @relation("CaseworkerNotes", fields: [caseworkerId], references: [id])
+  note         String
+  createdAt    DateTime @default(now())
+}
+
+model ClaimReviewAction {
+  id                    String              @id @default(cuid())
+  weeklyCertificationId String
+  weeklyCertification   WeeklyCertification @relation(fields: [weeklyCertificationId], references: [id])
+  caseworkerId          String
+  caseworker            User                @relation("CaseworkerReviews", fields: [caseworkerId], references: [id])
+  action                ReviewActionType
+  reason                String
+  previousValue         String?
+  newValue              String?
+  timestamp             DateTime            @default(now())
+}
+
+model Message {
+  id           String          @id @default(cuid())
+  claimantId   String
+  claimant     ClaimantProfile @relation("ClaimantMessages", fields: [claimantId], references: [id])
+  caseworkerId String?
+  caseworker   User?           @relation("CaseworkerMessages", fields: [caseworkerId], references: [id])
+  subject      String
+  body         String
+  sentAt       DateTime        @default(now())
+  readAt       DateTime?
+}
+
+model AuditLog {
+  id           String   @id @default(cuid())
+  actorUserId  String
+  actor        User     @relation(fields: [actorUserId], references: [id])
+  action       String
+  targetEntity String
+  targetId     String
+  timestamp    DateTime @default(now())
+  metadata     Json?
+}
