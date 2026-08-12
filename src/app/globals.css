@@ -1,0 +1,18 @@
+/* src/app/globals.css */
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+:root {
+  color-scheme: light;
+}
+
+body {
+  @apply bg-surface-alt text-text-primary;
+}
+
+/* Never remove focus outlines without a replacement */
+:focus-visible {
+  @apply outline outline-2 outline-offset-2;
+  outline-color: theme('colors.primary');
+}
