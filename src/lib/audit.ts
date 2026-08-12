@@ -13,7 +13,7 @@ export async function writeAuditLog(params: {
       action: params.action,
       targetEntity: params.targetEntity,
       targetId: params.targetId,
-      metadata: params.metadata ?? undefined,
+      metadata: params.metadata as any,
     },
   });
 }
