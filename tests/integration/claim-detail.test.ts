@@ -1,6 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { GET } from '@/app/api/claims/[id]/route';
+
+vi.mock('@/lib/auth', () => ({
+  getServerAuthSession: vi.fn(),
+}));
 
 describe('GET /api/claims/[id]', () => {
   let claimId: string;
@@ -14,6 +19,12 @@ describe('GET /api/claims/[id]', () => {
     userId = user.id;
     const profile = await prisma.claimantProfile.create({ data: { userId: user.id } });
     claimantProfileId = profile.id;
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: user.id, role: 'CLAIMANT', claimantProfileId: profile.id, email: user.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
     const claim = await prisma.claim.create({
       data: {
         claimantId: profile.id,
