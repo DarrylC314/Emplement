@@ -1,12 +1,13 @@
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
+import { apiError } from '@/lib/apiRequest';
 
 export async function GET(_req: Request) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
   // Explicit select, mirroring src/app/api/staff/claimants/route.ts. The
