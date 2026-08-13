@@ -85,12 +85,22 @@ function CertifyForm() {
         <fieldset className="mb-4">
           <legend className="font-medium mb-2">Job search activities (minimum 3 required)</legend>
           {activities.map((a, i) => (
-            <div key={i} className="border border-border rounded p-4 mb-3">
+            // Nested fieldset per entry, not just a styled <div>: with two or
+            // more activities, every entry's fields share the exact same
+            // labels ("Employer name", "Contact method", ...). A sighted user
+            // tells them apart visually by position; a screen-reader user
+            // navigating by field name hears "Employer name" repeated with no
+            // way to know which entry they're in. A legend here gives that
+            // context back — most screen readers announce the nearest
+            // enclosing legend alongside the field's own label — the same
+            // technique already used for the Yes/No question groups above.
+            <fieldset key={i} className="border border-border rounded p-4 mb-3">
+              <legend className="sr-only">Job search activity {i + 1}</legend>
               <TextField id={`employer-${i}`} label="Employer name" value={a.employerName} onChange={(v) => updateActivity(i, 'employerName', v)} required />
               <TextField id={`method-${i}`} label="Contact method" value={a.contactMethod} onChange={(v) => updateActivity(i, 'contactMethod', v)} required />
               <TextField id={`date-${i}`} label="Contact date" type="date" value={a.contactDate} onChange={(v) => updateActivity(i, 'contactDate', v)} required />
               <TextField id={`position-${i}`} label="Position applied for" value={a.position} onChange={(v) => updateActivity(i, 'position', v)} required />
-            </div>
+            </fieldset>
           ))}
           <Button type="button" variant="secondary" onClick={addActivity}>
             Add another job search activity
