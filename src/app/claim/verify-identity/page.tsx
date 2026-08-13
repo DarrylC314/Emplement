@@ -7,11 +7,11 @@ import { Button } from '@/components/ui/Button';
 export default function VerifyIdentityPage() {
   const { data: session, status } = useSession();
   const [starting, setStarting] = useState(false);
-  const [error, setError] = useState(false);
+  const [error, setError] = useState<'rate-limited' | 'generic' | null>(null);
 
   async function handleStart() {
     if (status !== 'authenticated' || !session?.user.claimantProfileId) return;
-    setError(false);
+    setError(null);
     setStarting(true);
     const res = await fetch('/api/identity-verification/start', {
       method: 'POST',
@@ -19,7 +19,7 @@ export default function VerifyIdentityPage() {
     });
     if (!res.ok) {
       setStarting(false);
-      setError(true);
+      setError(res.status === 429 ? 'rate-limited' : 'generic');
       return;
     }
     const data = await res.json();
@@ -36,7 +36,12 @@ export default function VerifyIdentityPage() {
         information. This information is encrypted and only used to verify your identity and
         process your claim.
       </p>
-      {error && (
+      {error === 'rate-limited' && (
+        <p role="alert" className="mb-4 text-error-text">
+          Too many attempts. Please wait a minute and try again.
+        </p>
+      )}
+      {error === 'generic' && (
         <p role="alert" className="mb-4 text-error-text">
           Something went wrong starting identity verification. Please try again.
         </p>

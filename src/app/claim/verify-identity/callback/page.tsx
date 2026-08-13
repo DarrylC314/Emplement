@@ -30,6 +30,10 @@ export default function IdentityVerificationCallbackPage() {
       router.push('/claim/new');
       return;
     }
+    if (res.status === 429) {
+      setErrors([{ id: 'legalName', message: 'Too many attempts. Please wait a minute and try again.' }]);
+      return;
+    }
     setErrors([{ id: 'legalName', message: 'Please check the information you entered and try again.' }]);
   }
 
