@@ -1,17 +1,20 @@
 // tests/e2e/claimant-flow.spec.ts
 import { test, expect } from '@playwright/test';
 import { prisma } from '../../src/lib/prisma';
+import { waitForHydration } from './helpers';
 
 const email = `e2e-claimant-${Date.now()}@example.com`;
 const password = 'CorrectHorseBattery9';
 
 test('claimant can sign up, verify identity, file a claim, and certify a week', async ({ page }) => {
   await page.goto('/claim/signup');
+  await waitForHydration(page);
   await page.getByLabel('Email address').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Create account' }).click();
   await expect(page).toHaveURL(/\/claim\/login/);
 
+  await waitForHydration(page);
   await page.getByLabel('Email address').fill(email);
   await page.getByLabel('Password').fill(password);
   await page.getByRole('button', { name: 'Log in' }).click();
@@ -34,6 +37,7 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
 
   await page.waitForURL(/\/claim\/verify-identity\/callback/);
   await page.waitForLoadState('networkidle');
+  await waitForHydration(page);
 
   await page.getByLabel('Legal name').fill('E2E Test Claimant');
   await page.getByLabel(/date of birth/i).fill('1990-01-15');
@@ -43,6 +47,7 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
   await page.getByRole('button', { name: /verify identity/i }).click();
 
   await expect(page).toHaveURL(/\/claim\/new/);
+  await waitForHydration(page);
   await page.getByLabel(/employment history/i).fill('Worked at Acme Corp for 3 years.');
   await page.getByLabel('Laid off / position eliminated').check();
   await page.getByLabel(/benefit year start date/i).fill('2026-08-11');
@@ -58,11 +63,7 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
   await page.getByRole('link', { name: /certify this week/i }).first().click();
   await expect(page).toHaveURL(/\/claim\/certify\?claimId=/);
   await expect(page.getByRole('heading', { name: /weekly certification/i })).toBeVisible();
-  // Hydration gate: the nav's sign-out button only appears once useSession()
-  // has resolved client-side. Interacting before that submits the form
-  // natively (no React handler attached yet) and silently loses the wizard's
-  // state.
-  await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible();
+  await waitForHydration(page);
 
   await page.getByLabel(/week ending date/i).fill('2026-08-15');
   // The wizard starts with one job-search entry; three are required for a

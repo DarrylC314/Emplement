@@ -5,6 +5,7 @@ import { test, expect, type Page } from '@playwright/test';
 import AxeBuilder from '@axe-core/playwright';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../src/lib/prisma';
+import { waitForHydration } from './helpers';
 
 const PUBLIC_ROUTES = ['/', '/claim/signup', '/claim/login', '/staff/login'];
 
@@ -121,6 +122,7 @@ test.beforeAll(async ({ browser }) => {
     const context = await browser.newContext();
     const page = await context.newPage();
     await page.goto('http://localhost:3000' + loginPath);
+    await waitForHydration(page);
     await page.getByLabel('Email address').fill(email);
     await page.getByLabel('Password').fill(password);
     await page.getByRole('button', { name: 'Log in' }).click();

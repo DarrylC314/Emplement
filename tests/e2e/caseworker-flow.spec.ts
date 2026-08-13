@@ -2,6 +2,7 @@
 import { test, expect } from '@playwright/test';
 import bcrypt from 'bcryptjs';
 import { prisma } from '../../src/lib/prisma';
+import { waitForHydration } from './helpers';
 
 // DEVIATION FROM BRIEF: the brief's original version of this test assumed a
 // caseworker account seeded by Task 21 (`caseworker@example.com` /
@@ -79,6 +80,7 @@ test('caseworker can log in, open a flagged case, and record a review decision',
   page,
 }) => {
   await page.goto('/staff/login');
+  await waitForHydration(page);
   await page.getByLabel('Email address').fill(caseworkerEmail);
   await page.getByLabel('Password').fill(caseworkerPassword);
   await page.getByRole('button', { name: 'Log in' }).click();
@@ -100,12 +102,7 @@ test('caseworker can log in, open a flagged case, and record a review decision',
   await page.getByRole('link', { name: /^review$/i }).first().click();
   await expect(page).toHaveURL(new RegExp(`/staff/certifications/${certificationId}/review`));
 
-  // Wait for hydration before submitting. The nav's sign-out button only
-  // renders once useSession() has resolved client-side, so its presence proves
-  // React is live; clicking the submit button before that fires a *native* form
-  // submission (the form's onSubmit handler isn't attached yet), which reloads
-  // the page and loses the validation the next assertion is checking.
-  await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible();
+  await waitForHydration(page);
 
   // An empty reason must be reported on the field, not silently submitted.
   await page.getByRole('button', { name: /submit decision/i }).click();
