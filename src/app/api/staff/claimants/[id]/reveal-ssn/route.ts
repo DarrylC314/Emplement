@@ -11,9 +11,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return Response.json({ error: 'Unauthorized' }, { status: access.status });
   }
 
-  const { caseworkerId, reason } = await req.json();
-  if (!caseworkerId || !reason) {
-    return Response.json({ error: 'caseworkerId and reason are required' }, { status: 400 });
+  const { reason } = await req.json();
+  if (!reason) {
+    return Response.json({ error: 'reason is required' }, { status: 400 });
   }
 
   const profile = await prisma.claimantProfile.findUnique({ where: { id: params.id } });
@@ -24,7 +24,10 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const ssn = decryptSSN(profile.ssnEncrypted);
 
   await writeAuditLog({
-    actorUserId: caseworkerId,
+    // Actor is always the verified session's caseworker, never a client-supplied
+    // id — otherwise an authenticated caseworker could attribute a reveal to a
+    // colleague in the audit trail.
+    actorUserId: session!.user.id,
     action: 'SSN_REVEALED',
     targetEntity: 'ClaimantProfile',
     targetId: params.id,

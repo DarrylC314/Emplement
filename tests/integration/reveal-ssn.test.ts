@@ -1,12 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { encryptSSN } from '@/lib/encryption';
 
+// Dynamic mock: the route now derives the audit log's actorUserId from
+// session.user.id, and AuditLog.actorUserId is a real FK to User.id, so the
+// mocked session must resolve to a genuine caseworker user created below
+// (a static placeholder id would violate the FK constraint on insert).
 vi.mock('@/lib/auth', () => ({
-  getServerAuthSession: vi.fn().mockResolvedValue({
-    user: { id: 'mock-caseworker-user-id', role: 'CASEWORKER', email: 'mock-caseworker@example.com' },
-    expires: new Date(Date.now() + 3600_000).toISOString(),
-  }),
+  getServerAuthSession: vi.fn(),
 }));
 
 process.env.SSN_ENCRYPTION_KEY =
@@ -31,13 +33,18 @@ describe('POST /api/staff/claimants/[id]/reveal-ssn', () => {
       data: { email: `reveal-caseworker-${Date.now()}@example.com`, passwordHash: 'x', role: 'CASEWORKER' },
     });
     caseworkerId = caseworker.id;
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: caseworker.id, role: 'CASEWORKER', email: caseworker.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
   });
 
-  it('returns the decrypted SSN and writes an audit log', async () => {
+  it('returns the decrypted SSN and writes an audit log attributed to the session caseworker', async () => {
     const { POST } = await import('@/app/api/staff/claimants/[id]/reveal-ssn/route');
     const req = new Request(`http://localhost/api/staff/claimants/${claimantProfileId}/reveal-ssn`, {
       method: 'POST',
-      body: JSON.stringify({ caseworkerId, reason: 'Identity dispute — verifying against paper file.' }),
+      body: JSON.stringify({ reason: 'Identity dispute — verifying against paper file.' }),
     });
     const res = await POST(req, { params: { id: claimantProfileId } });
     expect(res.status).toBe(200);
@@ -48,6 +55,8 @@ describe('POST /api/staff/claimants/[id]/reveal-ssn', () => {
       where: { targetEntity: 'ClaimantProfile', targetId: claimantProfileId, action: 'SSN_REVEALED' },
     });
     expect(log).not.toBeNull();
+    // Attribution must come from the verified session, not any client input.
+    expect(log?.actorUserId).toBe(caseworkerId);
   });
 
   afterAll(async () => {

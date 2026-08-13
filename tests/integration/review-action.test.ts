@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { POST } from '@/app/api/certifications/[id]/review/route';
 import { PATCH } from '@/app/api/staff/claimants/[id]/route';
 
+// Dynamic mock: both routes now derive their caseworkerId/actorUserId
+// columns from session.user.id, which are real FKs to User.id, so the
+// mocked session must resolve to a genuine caseworker user created below.
 vi.mock('@/lib/auth', () => ({
-  getServerAuthSession: vi.fn().mockResolvedValue({
-    user: { id: 'mock-caseworker-user-id', role: 'CASEWORKER', email: 'mock-caseworker@example.com' },
-    expires: new Date(Date.now() + 3600_000).toISOString(),
-  }),
+  getServerAuthSession: vi.fn(),
 }));
 
 describe('review action + claimant record editing', () => {
@@ -90,6 +91,11 @@ describe('review action + claimant record editing', () => {
       data: { email: `review-caseworker-${Date.now()}@example.com`, passwordHash: 'x', role: 'CASEWORKER' },
     });
     caseworkerId = caseworker.id;
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: caseworker.id, role: 'CASEWORKER', email: caseworker.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
 
     ({ claimId: deniedClaimId, certId: deniedCertId } = await makeClaimWithCert());
     ({ claimId: fraudClaimId, certId: fraudCertId } = await makeClaimWithCert('ACTIVE'));
@@ -214,22 +220,34 @@ describe('review action + claimant record editing', () => {
     expect(reviewActions.length).toBe(0);
   });
 
-  it('rejects a review action with a missing caseworkerId', async () => {
+  it('ignores a client-supplied caseworkerId and attributes the action to the session caseworker', async () => {
+    // A missing caseworkerId is no longer a 400 case: the route derives
+    // attribution from the verified session, not the body, so it neither
+    // requires nor trusts a caseworkerId field. This test proves a spoofed
+    // value in the body is silently ignored rather than trusted.
     const req = new Request(`http://localhost/api/certifications/${invalidAmountCertId}/review`, {
       method: 'POST',
       body: JSON.stringify({
+        caseworkerId: 'attacker-supplied-not-a-real-user-id',
         action: 'APPROVED',
-        reason: 'No caseworkerId provided on this request.',
+        reason: 'Confirmed by phone; caseworkerId in body should be ignored.',
       }),
     });
     const res = await POST(req, { params: { id: invalidAmountCertId } });
-    expect(res.status).toBe(400);
+    expect(res.status).toBe(201);
+    const reviewAction = await res.json();
+    expect(reviewAction.caseworkerId).toBe(caseworkerId);
+
+    const log = await prisma.auditLog.findFirst({
+      where: { targetEntity: 'ClaimReviewAction', targetId: reviewAction.id, action: 'CLAIM_REVIEWED' },
+    });
+    expect(log?.actorUserId).toBe(caseworkerId);
   });
 
-  it('updates claimant record fields and writes an audit log', async () => {
+  it('updates claimant record fields and writes an audit log attributed to the session caseworker', async () => {
     const req = new Request(`http://localhost/api/staff/claimants/${claimantProfileId}`, {
       method: 'PATCH',
-      body: JSON.stringify({ caseworkerId, legalName: 'Corrected Name' }),
+      body: JSON.stringify({ legalName: 'Corrected Name' }),
     });
     const res = await PATCH(req, { params: { id: claimantProfileId } });
     expect(res.status).toBe(200);
@@ -238,9 +256,11 @@ describe('review action + claimant record editing', () => {
     expect(profile?.legalName).toBe('Corrected Name');
 
     const log = await prisma.auditLog.findFirst({
-      where: { targetEntity: 'ClaimantProfile', action: 'CLAIMANT_RECORD_EDITED' },
+      where: { targetEntity: 'ClaimantProfile', action: 'CLAIMANT_RECORD_EDITED', targetId: claimantProfileId },
     });
     expect(log).not.toBeNull();
+    // Attribution must come from the verified session, not any client input.
+    expect(log?.actorUserId).toBe(caseworkerId);
   });
 
   afterAll(async () => {

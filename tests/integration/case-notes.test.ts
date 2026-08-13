@@ -1,12 +1,13 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { POST } from '@/app/api/case-notes/route';
 
+// Dynamic mock: the route now derives CaseNote.caseworkerId from
+// session.user.id, and that column is a real FK to User.id, so the mocked
+// session must resolve to a genuine caseworker user created below.
 vi.mock('@/lib/auth', () => ({
-  getServerAuthSession: vi.fn().mockResolvedValue({
-    user: { id: 'mock-caseworker-user-id', role: 'CASEWORKER', email: 'mock-caseworker@example.com' },
-    expires: new Date(Date.now() + 3600_000).toISOString(),
-  }),
+  getServerAuthSession: vi.fn(),
 }));
 
 describe('POST /api/case-notes', () => {
@@ -36,14 +37,18 @@ describe('POST /api/case-notes', () => {
       data: { email: `note-caseworker-${Date.now()}@example.com`, passwordHash: 'x', role: 'CASEWORKER' },
     });
     caseworkerId = caseworker.id;
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: caseworker.id, role: 'CASEWORKER', email: caseworker.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
   });
 
-  it('creates a case note on a claim', async () => {
+  it('creates a case note on a claim, attributed to the session caseworker', async () => {
     const req = new Request('http://localhost/api/case-notes', {
       method: 'POST',
       body: JSON.stringify({
         claimId,
-        caseworkerId,
         note: 'Called claimant to confirm job search activity for week of 8/15.',
       }),
     });
@@ -52,6 +57,8 @@ describe('POST /api/case-notes', () => {
 
     const notes = await prisma.caseNote.findMany({ where: { claimId } });
     expect(notes).toHaveLength(1);
+    // Attribution must come from the verified session, not any client input.
+    expect(notes[0].caseworkerId).toBe(caseworkerId);
   });
 
   afterAll(async () => {

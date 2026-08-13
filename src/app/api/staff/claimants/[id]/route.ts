@@ -13,10 +13,9 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   }
 
   const body = await req.json();
-  const { caseworkerId, ...updates } = body;
-  if (!caseworkerId) {
-    return Response.json({ error: 'caseworkerId is required' }, { status: 400 });
-  }
+  // caseworkerId, if sent, is ignored — attribution always comes from the
+  // verified session, never client input.
+  const { caseworkerId: _ignoredCaseworkerId, ...updates } = body;
 
   const data: Record<string, string> = {};
   for (const field of EDITABLE_FIELDS) {
@@ -32,7 +31,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
   });
 
   await writeAuditLog({
-    actorUserId: caseworkerId,
+    actorUserId: session!.user.id,
     action: 'CLAIMANT_RECORD_EDITED',
     targetEntity: 'ClaimantProfile',
     targetId: params.id,

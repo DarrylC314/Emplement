@@ -12,10 +12,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   }
 
   const body = await req.json();
-  const { caseworkerId, ...rest } = body;
-  if (!caseworkerId) {
-    return Response.json({ error: 'caseworkerId is required' }, { status: 400 });
-  }
+  // caseworkerId, if sent, is ignored — attribution always comes from the
+  // verified session, never client input.
+  const { caseworkerId: _ignoredCaseworkerId, ...rest } = body;
 
   const parsed = reviewActionSchema.safeParse(rest);
   if (!parsed.success) {
@@ -43,7 +42,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const reviewAction = await prisma.claimReviewAction.create({
     data: {
       weeklyCertificationId: params.id,
-      caseworkerId,
+      caseworkerId: session!.user.id,
       action: parsed.data.action,
       reason: parsed.data.reason,
       previousValue:
@@ -73,7 +72,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   });
 
   await writeAuditLog({
-    actorUserId: caseworkerId,
+    actorUserId: session!.user.id,
     action: 'CLAIM_REVIEWED',
     targetEntity: 'ClaimReviewAction',
     targetId: reviewAction.id,

@@ -39,19 +39,24 @@ describe('messages API', () => {
     caseworkerId = caseworker.id;
   });
 
-  it('sends a message from a caseworker to a claimant', async () => {
+  it('sends a message from a caseworker to a claimant, attributed to the session caseworker', async () => {
     mockCaseworkerSession();
     const req = new Request('http://localhost/api/messages', {
       method: 'POST',
       body: JSON.stringify({
         claimantProfileId,
-        caseworkerId,
+        // Deliberately mismatched from the mocked session's caseworker id —
+        // proves the route ignores a client-supplied caseworkerId and always
+        // attributes the message to the verified session instead.
+        caseworkerId: 'attacker-supplied-not-a-real-user-id',
         subject: 'Additional information needed',
         body: 'Please provide documentation of your job search for the week of 8/15.',
       }),
     });
     const res = await POST(req);
     expect(res.status).toBe(201);
+    const sent = await res.json();
+    expect(sent.caseworkerId).toBe(caseworkerId);
   });
 
   it('lists messages for a claimant', async () => {

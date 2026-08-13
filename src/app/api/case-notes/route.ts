@@ -9,12 +9,14 @@ export async function POST(req: Request) {
     return Response.json({ error: 'Unauthorized' }, { status: access.status });
   }
 
-  const { claimId, caseworkerId, note } = await req.json();
-  if (!claimId || !caseworkerId || !note) {
-    return Response.json({ error: 'claimId, caseworkerId, and note are required' }, { status: 400 });
+  const { claimId, note } = await req.json();
+  if (!claimId || !note) {
+    return Response.json({ error: 'claimId and note are required' }, { status: 400 });
   }
+  // Attribution always comes from the verified session, never client input —
+  // otherwise an authenticated caseworker could attribute a note to a colleague.
   const created = await prisma.caseNote.create({
-    data: { claimId, caseworkerId, note },
+    data: { claimId, caseworkerId: session!.user.id, note },
   });
   return Response.json(created, { status: 201 });
 }

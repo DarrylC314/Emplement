@@ -11,6 +11,13 @@ export async function GET(req: Request) {
 
   const url = new URL(req.url);
   const q = url.searchParams.get('q') ?? '';
+  // Explicit select — never include: { user: true }, which would ship the
+  // full User row (passwordHash included) to the browser. Also omits
+  // ssnEncrypted (not used by any caller of this route; SSN access goes
+  // through the separate audit-logged reveal-ssn endpoint) and other
+  // ClaimantProfile PII the UI doesn't display (dateOfBirth, phone,
+  // mailingAddress). Only returns what src/app/staff/dashboard/page.tsx and
+  // src/app/staff/claimants/[id]/page.tsx actually read.
   const claimants = await prisma.claimantProfile.findMany({
     where: {
       OR: [
@@ -18,12 +25,31 @@ export async function GET(req: Request) {
         { user: { email: { contains: q, mode: 'insensitive' } } },
       ],
     },
-    include: {
-      user: true,
+    select: {
+      id: true,
+      legalName: true,
+      user: { select: { email: true } },
       claims: {
-        include: {
-          certifications: true,
-          caseNotes: { orderBy: { createdAt: 'desc' } },
+        select: {
+          id: true,
+          status: true,
+          weeklyBenefitAmount: true,
+          certifications: {
+            select: {
+              id: true,
+              weekEndingDate: true,
+              autoDecision: true,
+              autoDecisionReason: true,
+            },
+          },
+          caseNotes: {
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              note: true,
+              createdAt: true,
+            },
+          },
         },
       },
     },
