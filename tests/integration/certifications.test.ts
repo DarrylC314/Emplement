@@ -90,6 +90,52 @@ describe('POST /api/certifications', () => {
     certificationIds.push(cert.id);
   });
 
+  it('refuses a certification against a DENIED or CLOSED claim', async () => {
+    const closedClaim = await prisma.claim.create({
+      data: {
+        claimantId: claimantProfileId,
+        status: 'CLOSED',
+        benefitYearStart: new Date('2026-08-11'),
+        benefitYearEnd: new Date('2027-08-11'),
+        weeklyBenefitAmount: 320,
+      },
+    });
+
+    const req = new Request('http://localhost/api/certifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimId: closedClaim.id,
+        weekEndingDate: '2026-08-29',
+        ableAndAvailable: true,
+        workedThisWeek: false,
+        earnings: 0,
+        refusedWork: false,
+        jobSearchActivities: [
+          { employerName: 'Acme', contactMethod: 'Online', contactDate: '2026-08-26', position: 'Machinist' },
+          { employerName: 'Beta', contactMethod: 'Phone', contactDate: '2026-08-27', position: 'Operator' },
+          { employerName: 'Gamma', contactMethod: 'In person', contactDate: '2026-08-28', position: 'Technician' },
+        ],
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/closed/i);
+
+    // No certification may be recorded against a terminal claim.
+    const created = await prisma.weeklyCertification.count({ where: { claimId: closedClaim.id } });
+    expect(created).toBe(0);
+
+    await prisma.claim.delete({ where: { id: closedClaim.id } });
+  });
+
+  it('rejects a malformed JSON body with a clean 400', async () => {
+    const res = await POST(
+      new Request('http://localhost/api/certifications', { method: 'POST', body: '<<<not json' })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid request body' });
+  });
+
   afterAll(async () => {
     await prisma.auditLog.deleteMany({
       where: { targetEntity: 'WeeklyCertification', targetId: { in: certificationIds } },

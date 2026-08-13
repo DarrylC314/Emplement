@@ -1,9 +1,15 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { signupSchema } from '@/lib/validation/auth';
+import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
 
 export async function POST(req: Request) {
-  const body = await req.json();
+  // Note the deliberately narrow pick below: a `role` field in the body is
+  // ignored outright and every account is created as a CLAIMANT. Accepting it
+  // would let anyone self-provision a CASEWORKER account.
+  const body = await parseJson<{ email?: string; password?: string }>(req);
+  if (!body) return invalidBody();
+
   const credsParsed = signupSchema.safeParse({ email: body.email, password: body.password });
 
   if (!credsParsed.success) {
@@ -12,7 +18,7 @@ export async function POST(req: Request) {
 
   const existing = await prisma.user.findUnique({ where: { email: credsParsed.data.email } });
   if (existing) {
-    return Response.json({ error: 'An account with this email already exists.' }, { status: 409 });
+    return apiError('An account with this email already exists.', 409);
   }
 
   const passwordHash = await bcrypt.hash(credsParsed.data.password, 12);

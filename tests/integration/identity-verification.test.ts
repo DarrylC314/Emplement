@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
+import { RATE_LIMIT_MAX_ATTEMPTS, resetRateLimits } from '@/lib/rateLimit';
 import { POST as startVerification } from '@/app/api/identity-verification/start/route';
 import { POST as callbackVerification } from '@/app/api/identity-verification/callback/route';
 
@@ -63,6 +64,38 @@ describe('identity verification flow', () => {
       where: { targetEntity: 'ClaimantProfile', targetId: claimantProfileId, action: 'IDENTITY_VERIFIED' },
     });
     expect(log).not.toBeNull();
+  });
+
+  it('rate limits repeated verification starts and refuses with 429', async () => {
+    resetRateLimits();
+    const makeRequest = () =>
+      new Request('http://localhost/api/identity-verification/start', {
+        method: 'POST',
+        body: JSON.stringify({ claimantProfileId }),
+      });
+
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt += 1) {
+      const allowed = await startVerification(makeRequest());
+      expect(allowed.status).toBe(200);
+    }
+
+    const blocked = await startVerification(makeRequest());
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toMatch(/too many/i);
+
+    resetRateLimits();
+  });
+
+  it('rejects a malformed JSON body with a clean 400', async () => {
+    resetRateLimits();
+    const res = await startVerification(
+      new Request('http://localhost/api/identity-verification/start', {
+        method: 'POST',
+        body: 'not-json',
+      })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid request body' });
   });
 
   afterAll(async () => {

@@ -1,6 +1,7 @@
 import { describe, it, expect, afterAll, beforeAll } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { authorizeCredentials } from '@/lib/auth';
+import { RATE_LIMIT_MAX_ATTEMPTS, resetRateLimits } from '@/lib/rateLimit';
 import bcrypt from 'bcryptjs';
 
 describe('authorizeCredentials', () => {
@@ -62,6 +63,23 @@ describe('authorizeCredentials', () => {
   it('returns null for non-existent user', async () => {
     const result = await authorizeCredentials('nonexistent@example.com', claimantPassword);
     expect(result).toBeNull();
+  });
+
+  it('rate limits repeated login attempts for the same email', async () => {
+    resetRateLimits();
+    // Five attempts are permitted per email per minute.
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt += 1) {
+      await authorizeCredentials(claimantEmail, 'WrongPassword123');
+    }
+    // The next one is refused even though the password is now correct, proving
+    // the limiter runs ahead of the credential check rather than being advisory.
+    expect(await authorizeCredentials(claimantEmail, claimantPassword)).toBeNull();
+
+    // A different account is unaffected by another account's attempts.
+    expect(await authorizeCredentials(caseworkerEmail, caseworkerPassword)).not.toBeNull();
+
+    resetRateLimits();
+    expect(await authorizeCredentials(claimantEmail, claimantPassword)).not.toBeNull();
   });
 
   afterAll(async () => {

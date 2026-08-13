@@ -57,6 +57,12 @@ describe('messages API', () => {
     expect(res.status).toBe(201);
     const sent = await res.json();
     expect(sent.caseworkerId).toBe(caseworkerId);
+
+    const log = await prisma.auditLog.findFirst({
+      where: { action: 'MESSAGE_SENT', targetEntity: 'Message', targetId: sent.id },
+    });
+    expect(log).not.toBeNull();
+    expect(log?.actorUserId).toBe(caseworkerId);
   });
 
   it('lists messages for a claimant', async () => {
@@ -103,7 +109,43 @@ describe('messages API', () => {
     expect(dbMessage?.readAt).not.toBeNull();
   });
 
+  it('does not mark messages read when a CASEWORKER reads the thread', async () => {
+    mockCaseworkerSession();
+    const sendRes = await POST(
+      new Request('http://localhost/api/messages', {
+        method: 'POST',
+        body: JSON.stringify({
+          claimantProfileId,
+          subject: 'Third notice',
+          body: 'Please respond by Friday.',
+        }),
+      })
+    );
+    const sent = await sendRes.json();
+
+    // A caseworker opening the case detail page must not silently clear the
+    // claimant's unread state for a message the claimant has never seen.
+    await GET(new Request(`http://localhost/api/messages?claimantProfileId=${claimantProfileId}`));
+    const afterCaseworkerRead = await prisma.message.findUnique({ where: { id: sent.id } });
+    expect(afterCaseworkerRead?.readAt).toBeNull();
+
+    mockClaimantSession();
+    await GET(new Request(`http://localhost/api/messages?claimantProfileId=${claimantProfileId}`));
+    const afterClaimantRead = await prisma.message.findUnique({ where: { id: sent.id } });
+    expect(afterClaimantRead?.readAt).not.toBeNull();
+  });
+
+  it('rejects a malformed JSON body with a clean 400', async () => {
+    mockCaseworkerSession();
+    const res = await POST(
+      new Request('http://localhost/api/messages', { method: 'POST', body: 'not json at all' })
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid request body' });
+  });
+
   afterAll(async () => {
+    await prisma.auditLog.deleteMany({ where: { actorUserId: caseworkerId } });
     await prisma.message.deleteMany({ where: { claimantId: claimantProfileId } });
     await prisma.claimantProfile.delete({ where: { id: claimantProfileId } });
     await prisma.user.delete({ where: { id: claimantUserId } });

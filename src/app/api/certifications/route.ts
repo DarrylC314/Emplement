@@ -3,17 +3,24 @@ import { weeklyCertificationSchema } from '@/lib/validation/certification';
 import { evaluateCertification } from '@/lib/decisionEngine';
 import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
-import { requireRole } from '@/lib/rbac';
+import { requireOwnership, requireRole } from '@/lib/rbac';
+import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
 
 export async function POST(req: Request) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CLAIMANT']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
-  const body = await req.json();
+  const body = await parseJson<{ claimId?: string } & Record<string, unknown>>(req);
+  if (!body) return invalidBody();
+
   const { claimId, ...rest } = body;
+  if (!claimId) {
+    return apiError('claimId is required', 400);
+  }
+
   const parsed = weeklyCertificationSchema.safeParse(rest);
   if (!parsed.success) {
     return Response.json({ errors: parsed.error.flatten() }, { status: 400 });
@@ -24,12 +31,22 @@ export async function POST(req: Request) {
     include: { claimant: true },
   });
   if (!claim) {
-    return Response.json({ error: 'Claim not found' }, { status: 404 });
+    return apiError('Claim not found', 404);
   }
 
-  const user = session!.user;
-  if (user.role === 'CLAIMANT' && user.claimantProfileId !== claim.claimantId) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  const owns = requireOwnership(session, claim.claimantId);
+  if (!owns.ok) {
+    return apiError('Forbidden', owns.status);
+  }
+
+  // A closed or denied claim is terminal: accepting a new weekly certification
+  // against one would let a claimant certify weeks on a claim that is no longer
+  // payable, and would silently flip its status back to ACTIVE/RESTRICTED below.
+  if (claim.status === 'DENIED' || claim.status === 'CLOSED') {
+    return apiError(
+      `This claim is ${claim.status.toLowerCase()} and can no longer accept weekly certifications.`,
+      409
+    );
   }
 
   const decision = evaluateCertification({

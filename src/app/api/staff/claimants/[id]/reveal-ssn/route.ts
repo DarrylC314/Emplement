@@ -3,22 +3,26 @@ import { decryptSSN } from '@/lib/encryption';
 import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
+import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
-  const { reason } = await req.json();
+  const body = await parseJson<{ reason?: string }>(req);
+  if (!body) return invalidBody();
+
+  const { reason } = body;
   if (!reason) {
-    return Response.json({ error: 'reason is required' }, { status: 400 });
+    return apiError('reason is required', 400);
   }
 
   const profile = await prisma.claimantProfile.findUnique({ where: { id: params.id } });
   if (!profile?.ssnEncrypted) {
-    return Response.json({ error: 'No SSN on file for this claimant' }, { status: 404 });
+    return apiError('No SSN on file for this claimant', 404);
   }
 
   const ssn = decryptSSN(profile.ssnEncrypted);

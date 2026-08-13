@@ -3,15 +3,18 @@ import { reviewActionSchema } from '@/lib/validation/review';
 import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
+import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
-  const body = await req.json();
+  const body = await parseJson<Record<string, unknown>>(req);
+  if (!body) return invalidBody();
+
   // caseworkerId, if sent, is ignored — attribution always comes from the
   // verified session, never client input.
   const { caseworkerId: _ignoredCaseworkerId, ...rest } = body;
@@ -24,9 +27,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   if (parsed.data.action === 'AMOUNT_ADJUSTED') {
     const amount = Number(parsed.data.newValue);
     if (!parsed.data.newValue || !Number.isFinite(amount) || amount <= 0) {
-      return Response.json(
-        { error: 'A valid positive newValue is required when action is AMOUNT_ADJUSTED' },
-        { status: 400 }
+      return apiError(
+        'A valid positive newValue is required when action is AMOUNT_ADJUSTED',
+        400
       );
     }
   }
@@ -36,7 +39,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     include: { claim: true },
   });
   if (!certification) {
-    return Response.json({ error: 'Certification not found' }, { status: 404 });
+    return apiError('Certification not found', 404);
   }
 
   const reviewAction = await prisma.claimReviewAction.create({

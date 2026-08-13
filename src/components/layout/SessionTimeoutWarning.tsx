@@ -7,19 +7,11 @@ import { Button } from '@/components/ui/Button';
 type Props = {
   /** How long before expiry to show the warning. Defaults to 2 minutes. */
   warnBeforeMs?: number;
-  /** Total session length, used only for the test harness; production reads from the session. */
-  sessionLengthMs?: number;
 };
 
-export function SessionTimeoutWarning({
-  warnBeforeMs = 2 * 60 * 1000,
-  sessionLengthMs = 30 * 60 * 1000,
-}: Props) {
+export function SessionTimeoutWarning({ warnBeforeMs = 2 * 60 * 1000 }: Props) {
   const { data, update } = useSession();
   const [visible, setVisible] = useState(false);
-  // Bumped every time the session is extended, to re-arm the warning timer
-  // below for the new expiry instead of only ever firing once at mount.
-  const [cycle, setCycle] = useState(0);
 
   // Depend on the expiry string, not the `data` object itself: SessionProvider's
   // default refetchOnWindowFocus re-fetches (and returns a brand-new `data`
@@ -32,17 +24,30 @@ export function SessionTimeoutWarning({
     // No active session (e.g. an unauthenticated page) -- nothing to warn about.
     if (!expiresAt) return;
 
-    const warnTimer = setTimeout(() => setVisible(true), sessionLengthMs - warnBeforeMs);
+    // Anchored to the session's real expiry, not a fixed duration measured from
+    // whenever this component happened to mount. A mount-relative timer drifts
+    // away from the truth on every client-side navigation and says nothing
+    // about when the token actually dies (WCAG 2.2.1 wants a warning about the
+    // real timeout). Re-arming is automatic: extending the session changes
+    // `expires`, which re-runs this effect for the new deadline.
+    const msUntilWarning = new Date(expiresAt).getTime() - Date.now() - warnBeforeMs;
+    if (msUntilWarning <= 0) {
+      setVisible(true);
+      return;
+    }
+
+    setVisible(false);
+    const warnTimer = setTimeout(() => setVisible(true), msUntilWarning);
     return () => clearTimeout(warnTimer);
-  }, [expiresAt, sessionLengthMs, warnBeforeMs, cycle]);
+  }, [expiresAt, warnBeforeMs]);
 
   async function handleExtend() {
     // Genuinely extend the underlying NextAuth session (JWT strategy: this
     // re-fetches/refreshes the token, resetting its rolling expiry) rather
-    // than just dismissing the warning while the token keeps expiring.
+    // than just dismissing the warning while the token keeps expiring. The
+    // refreshed `expires` re-arms the timer above via the effect dependency.
     await update();
     setVisible(false);
-    setCycle((c) => c + 1);
   }
 
   if (!visible) return null;

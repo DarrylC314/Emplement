@@ -61,7 +61,28 @@ describe('POST /api/case-notes', () => {
     expect(notes[0].caseworkerId).toBe(caseworkerId);
   });
 
+  it('writes a CASE_NOTE_ADDED audit log for the note it created', async () => {
+    const note = await prisma.caseNote.findFirst({ where: { claimId } });
+    const log = await prisma.auditLog.findFirst({
+      where: { action: 'CASE_NOTE_ADDED', targetEntity: 'CaseNote', targetId: note!.id },
+    });
+    expect(log).not.toBeNull();
+    expect(log?.actorUserId).toBe(caseworkerId);
+    expect(log?.metadata).toEqual({ claimId });
+  });
+
+  it('rejects a malformed JSON body with a clean 400', async () => {
+    const req = new Request('http://localhost/api/case-notes', {
+      method: 'POST',
+      body: 'this is not json',
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+    expect(await res.json()).toEqual({ error: 'Invalid request body' });
+  });
+
   afterAll(async () => {
+    await prisma.auditLog.deleteMany({ where: { actorUserId: caseworkerId } });
     await prisma.caseNote.deleteMany({ where: { claimId } });
     await prisma.claim.delete({ where: { id: claimId } });
     await prisma.claimantProfile.delete({ where: { id: claimantProfileId } });

@@ -1,10 +1,13 @@
 import { describe, it, expect } from 'vitest';
-import { requireRole } from '@/lib/rbac';
+import { requireOwnership, requireRole } from '@/lib/rbac';
 import type { Session } from 'next-auth';
 
-function sessionWithRole(role: 'CLAIMANT' | 'CASEWORKER' | 'ADMIN'): Session {
+function sessionWithRole(
+  role: 'CLAIMANT' | 'CASEWORKER' | 'ADMIN',
+  claimantProfileId?: string
+): Session {
   return {
-    user: { id: 'user-1', role, email: 'test@example.com' },
+    user: { id: 'user-1', role, claimantProfileId, email: 'test@example.com' },
     expires: new Date(Date.now() + 3600_000).toISOString(),
   };
 }
@@ -23,5 +26,36 @@ describe('requireRole', () => {
 
   it('rejects a null session with 401', () => {
     expect(requireRole(null, ['CASEWORKER'])).toEqual({ ok: false, status: 401 });
+  });
+});
+
+describe('requireOwnership', () => {
+  it('allows a claimant acting on their own profile', () => {
+    expect(requireOwnership(sessionWithRole('CLAIMANT', 'profile-a'), 'profile-a')).toEqual({
+      ok: true,
+    });
+  });
+
+  it("rejects a claimant acting on another claimant's profile with 403", () => {
+    expect(requireOwnership(sessionWithRole('CLAIMANT', 'profile-a'), 'profile-b')).toEqual({
+      ok: false,
+      status: 403,
+    });
+  });
+
+  it('rejects a claimant with no profile id with 403', () => {
+    expect(requireOwnership(sessionWithRole('CLAIMANT'), 'profile-b')).toEqual({
+      ok: false,
+      status: 403,
+    });
+  });
+
+  it('lets caseworkers and admins through — their access is gated by requireRole', () => {
+    expect(requireOwnership(sessionWithRole('CASEWORKER'), 'profile-b')).toEqual({ ok: true });
+    expect(requireOwnership(sessionWithRole('ADMIN'), 'profile-b')).toEqual({ ok: true });
+  });
+
+  it('fails safe on a missing session', () => {
+    expect(requireOwnership(null, 'profile-b')).toEqual({ ok: false, status: 403 });
   });
 });

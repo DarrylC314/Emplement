@@ -14,21 +14,60 @@ type Claim = {
 };
 
 export default function DashboardPage() {
-  const { data: session } = useSession();
+  const { data: session, status } = useSession();
   const [claims, setClaims] = useState<Claim[]>([]);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!session?.user.claimantProfileId) return;
-    fetch(`/api/claims?claimantProfileId=${session.user.claimantProfileId}`)
-      .then((r) => r.json())
-      .then((data) => {
-        setClaims(data);
-        setLoading(false);
-      });
-  }, [session?.user.claimantProfileId]);
+    if (status === 'loading') return;
+
+    // Every path must clear `loading`. It used to be cleared only inside the
+    // success callback, so a caseworker landing on this claimant-only page, a
+    // failed fetch, or a 401/403 left the page stuck on "Loading…" forever.
+    const claimantProfileId = session?.user.claimantProfileId;
+    if (!claimantProfileId) {
+      setLoading(false);
+      setError('Sign in with a claimant account to see your claims.');
+      return;
+    }
+
+    let cancelled = false;
+    (async () => {
+      try {
+        const res = await fetch(`/api/claims?claimantProfileId=${claimantProfileId}`);
+        if (cancelled) return;
+        // A 401/403 body is `{ error: '...' }`, not an array — passing it to
+        // setClaims would crash the render on .map instead of explaining.
+        if (!res.ok) {
+          setError('We could not load your claims. Please sign in again and retry.');
+          return;
+        }
+        setClaims(await res.json());
+      } catch {
+        if (!cancelled) setError('We could not load your claims. Please check your connection.');
+      } finally {
+        if (!cancelled) setLoading(false);
+      }
+    })();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [session?.user.claimantProfileId, status]);
 
   if (loading) return <main id="main-content" className="p-8">Loading…</main>;
+
+  if (error) {
+    return (
+      <main id="main-content" className="max-w-3xl mx-auto p-8">
+        <h1 className="text-2xl font-bold mb-4">Your claims</h1>
+        <p role="alert" className="text-error-text">
+          {error}
+        </p>
+      </main>
+    );
+  }
 
   return (
     <main id="main-content" className="max-w-3xl mx-auto p-8">

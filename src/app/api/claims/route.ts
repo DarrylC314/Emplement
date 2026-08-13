@@ -2,7 +2,8 @@ import { prisma } from '@/lib/prisma';
 import { claimInitiationSchema } from '@/lib/validation/claim';
 import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
-import { requireRole } from '@/lib/rbac';
+import { requireOwnership, requireRole } from '@/lib/rbac';
+import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
 
 const DEFAULT_WEEKLY_BENEFIT = 320.0;
 
@@ -10,15 +11,20 @@ export async function POST(req: Request) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CLAIMANT']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
-  const body = await req.json();
-  const { claimantProfileId, ...rest } = body;
+  const body = await parseJson<{ claimantProfileId?: string } & Record<string, unknown>>(req);
+  if (!body) return invalidBody();
 
-  const user = session!.user;
-  if (user.role === 'CLAIMANT' && user.claimantProfileId !== claimantProfileId) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  const { claimantProfileId, ...rest } = body;
+  if (!claimantProfileId) {
+    return apiError('claimantProfileId is required', 400);
+  }
+
+  const owns = requireOwnership(session, claimantProfileId);
+  if (!owns.ok) {
+    return apiError('Forbidden', owns.status);
   }
 
   const parsed = claimInitiationSchema.safeParse(rest);
@@ -28,10 +34,7 @@ export async function POST(req: Request) {
 
   const profile = await prisma.claimantProfile.findUnique({ where: { id: claimantProfileId } });
   if (!profile || profile.identityVerificationStatus !== 'VERIFIED') {
-    return Response.json(
-      { error: 'Identity must be verified before filing a claim.' },
-      { status: 403 }
-    );
+    return apiError('Identity must be verified before filing a claim.', 403);
   }
 
   const start = new Date(parsed.data.benefitYearStart);
@@ -62,18 +65,18 @@ export async function GET(req: Request) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CLAIMANT', 'CASEWORKER', 'ADMIN']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
   const url = new URL(req.url);
   const claimantProfileId = url.searchParams.get('claimantProfileId');
   if (!claimantProfileId) {
-    return Response.json({ error: 'claimantProfileId is required' }, { status: 400 });
+    return apiError('claimantProfileId is required', 400);
   }
 
-  const user = session!.user;
-  if (user.role === 'CLAIMANT' && user.claimantProfileId !== claimantProfileId) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  const owns = requireOwnership(session, claimantProfileId);
+  if (!owns.ok) {
+    return apiError('Forbidden', owns.status);
   }
 
   const claims = await prisma.claim.findMany({

@@ -3,8 +3,16 @@ import { getServerSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
+import { checkRateLimit } from '@/lib/rateLimit';
 
 export async function authorizeCredentials(email: string, password: string) {
+  // Basic login rate limiting (spec: "Basic rate limiting on login and
+  // identity-verification endpoints"). Keyed by email so one account cannot be
+  // brute-forced from many addresses; returning null surfaces to the client as
+  // the same 401 as a bad password, which also avoids telling an attacker
+  // whether the account exists.
+  if (!checkRateLimit(`login:${email.toLowerCase()}`).allowed) return null;
+
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return null;
   const valid = await bcrypt.compare(password, user.passwordHash);
@@ -14,7 +22,12 @@ export async function authorizeCredentials(email: string, password: string) {
 }
 
 export const authOptions: NextAuthOptions = {
-  session: { strategy: 'jwt' },
+  // 30 minutes, in seconds (NextAuth's unit). Without an explicit maxAge
+  // NextAuth defaults to a 30-DAY session, which is far too long for a benefits
+  // portal handling SSNs — and it left SessionTimeoutWarning warning about an
+  // expiry that was never going to happen. The warning component now derives
+  // its timing from the real `session.expires` this produces.
+  session: { strategy: 'jwt', maxAge: 30 * 60 },
   pages: { signIn: '/claim/login' },
   providers: [
     CredentialsProvider({

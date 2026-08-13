@@ -3,21 +3,34 @@ import { identityVerificationSchema } from '@/lib/validation/identity';
 import { encryptSSN } from '@/lib/encryption';
 import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
-import { requireRole } from '@/lib/rbac';
+import { requireOwnership, requireRole } from '@/lib/rbac';
+import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { checkRateLimit, rateLimitKey } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CLAIMANT']);
   if (!access.ok) {
-    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+    return apiError('Unauthorized', access.status);
   }
 
-  const body = await req.json();
-  const { claimantProfileId, ...rest } = body;
+  // Spec: basic rate limiting on the identity-verification endpoints.
+  const limit = checkRateLimit(rateLimitKey(req, 'idv-callback', session!.user.id));
+  if (!limit.allowed) {
+    return apiError('Too many verification attempts. Please try again in a minute.', 429);
+  }
 
-  const user = session!.user;
-  if (user.role === 'CLAIMANT' && user.claimantProfileId !== claimantProfileId) {
-    return Response.json({ error: 'Forbidden' }, { status: 403 });
+  const body = await parseJson<{ claimantProfileId?: string } & Record<string, unknown>>(req);
+  if (!body) return invalidBody();
+
+  const { claimantProfileId, ...rest } = body;
+  if (!claimantProfileId) {
+    return apiError('claimantProfileId is required', 400);
+  }
+
+  const owns = requireOwnership(session, claimantProfileId);
+  if (!owns.ok) {
+    return apiError('Forbidden', owns.status);
   }
 
   const parsed = identityVerificationSchema.safeParse(rest);
