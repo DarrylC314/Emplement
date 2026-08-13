@@ -4,6 +4,7 @@ import { useEffect } from 'react';
 import { SessionProvider } from 'next-auth/react';
 import { AppNav } from '@/components/layout/AppNav';
 import { SessionTimeoutWarning } from '@/components/layout/SessionTimeoutWarning';
+import { RouteFocusManager } from '@/components/layout/RouteFocusManager';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -25,6 +26,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
     // page's own <main id="main-content"> — so the layout's skip link still
     // jumps past the navigation to the page content, as WCAG expects.
     <SessionProvider>
+      <RouteFocusManager />
       <AppNav />
       {children}
       <SessionTimeoutWarning />
