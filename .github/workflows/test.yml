@@ -1,0 +1,68 @@
+name: test
+
+# Backs the design spec's claim that the axe-core accessibility gate "runs
+# against every page in the Playwright E2E suite; a regression fails the build".
+# Single job on purpose: no matrix, no caching beyond what setup-node gives.
+on:
+  push:
+    branches: ['**']
+  pull_request:
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: emplement
+          POSTGRES_PASSWORD: emplement
+          POSTGRES_DB: emplement_claims
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 5
+
+    env:
+      # Mirrors .env.example. These are throwaway CI values, not secrets: the
+      # database is a per-run service container and the app never sees real data.
+      DATABASE_URL: postgresql://emplement:emplement@localhost:5432/emplement_claims
+      NEXTAUTH_SECRET: ci-only-secret-do-not-use-anywhere-else=
+      NEXTAUTH_URL: http://localhost:3000
+      SSN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Generate Prisma client
+        run: npm run db:generate
+
+      - name: Apply migrations
+        run: npx prisma migrate deploy
+
+      - name: Unit and integration tests
+        run: npm test
+
+      - name: Install Playwright browser
+        run: npx playwright install --with-deps chromium
+
+      # Playwright's webServer builds and serves a production bundle; CI=true
+      # (set by GitHub Actions) makes it start a fresh server rather than
+      # reusing anything already listening.
+      - name: End-to-end tests and accessibility gate
+        run: npm run test:e2e
+
+      - name: Production build
+        run: npm run build

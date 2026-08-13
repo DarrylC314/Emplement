@@ -46,6 +46,10 @@ legibility, inconsistent unexplained color-coding, and competing/redundant calls
   caseworker review rather than an automated partial-benefit formula) — flagged as a Phase 2
   candidate.
 - No employer marketplace, no workplace monitoring features (Phases 3/4).
+- No email verification at sign-up. The claimant flow below lists it as part of
+  step 1 ("Sign up → email verification"), but Phase 1 ships sign-up without it:
+  an account is usable immediately after registration. Deferred rather than
+  dropped — it needs an outbound mail dependency this phase deliberately avoids.
 
 ## Format & delivery
 
