@@ -40,10 +40,15 @@ export function evaluateCertification(input: CertificationInput): DecisionResult
     };
   }
 
-  if (input.workedThisWeek && input.earnings > 0) {
+  // Either signal alone is enough to flag. Requiring BOTH (the previous `&&`)
+  // silently auto-approved a claimant who reported earnings but answered "No"
+  // to "did you work this week" — an overpayment/fraud path. The spec states
+  // "Earned income reported → Flagged for review" unconditionally.
+  if (input.workedThisWeek || input.earnings > 0) {
     return {
       decision: 'FLAGGED',
-      reason: 'Claimant reported earnings this week — requires manual benefit calculation.',
+      reason:
+        'Claimant reported work or earnings this week — requires manual benefit calculation.',
     };
   }
 

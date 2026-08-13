@@ -5,6 +5,65 @@ import { requireRole } from '@/lib/rbac';
 
 const EDITABLE_FIELDS = ['legalName', 'phone', 'mailingAddress'] as const;
 
+/**
+ * Single-claimant detail fetch for the staff case-detail page.
+ *
+ * The page used to call the search route (`GET /api/staff/claimants?q=`) and
+ * pick its claimant out of the response, which capped it at the first 25
+ * unordered rows — any claimant past that window was simply unreachable.
+ *
+ * The `select` below deliberately mirrors the search route's: never
+ * `include: { user: true }` (that ships passwordHash to the browser), and no
+ * ssnEncrypted (SSN access goes through the audit-logged reveal-ssn endpoint)
+ * or unused ClaimantProfile PII (dateOfBirth, phone, mailingAddress).
+ */
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerAuthSession();
+  const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
+  if (!access.ok) {
+    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+  }
+
+  const claimant = await prisma.claimantProfile.findUnique({
+    where: { id: params.id },
+    select: {
+      id: true,
+      legalName: true,
+      user: { select: { email: true } },
+      claims: {
+        select: {
+          id: true,
+          status: true,
+          weeklyBenefitAmount: true,
+          certifications: {
+            orderBy: { weekEndingDate: 'desc' },
+            select: {
+              id: true,
+              weekEndingDate: true,
+              autoDecision: true,
+              autoDecisionReason: true,
+            },
+          },
+          caseNotes: {
+            orderBy: { createdAt: 'desc' },
+            select: {
+              id: true,
+              note: true,
+              createdAt: true,
+            },
+          },
+        },
+      },
+    },
+  });
+
+  if (!claimant) {
+    return Response.json({ error: 'Claimant not found' }, { status: 404 });
+  }
+
+  return Response.json(claimant);
+}
+
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CASEWORKER', 'ADMIN']);

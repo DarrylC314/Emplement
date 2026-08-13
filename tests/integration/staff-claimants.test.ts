@@ -1,6 +1,10 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { encryptSSN } from '@/lib/encryption';
+import { getServerAuthSession } from '@/lib/auth';
+import { expectNoSensitiveFields } from '../helpers/pii';
 import { GET as searchClaimants } from '@/app/api/staff/claimants/route';
+import { GET as getClaimantDetail } from '@/app/api/staff/claimants/[id]/route';
 
 vi.mock('@/lib/auth', () => ({
   getServerAuthSession: vi.fn().mockResolvedValue({
@@ -9,7 +13,7 @@ vi.mock('@/lib/auth', () => ({
   }),
 }));
 
-describe('GET /api/staff/claimants', () => {
+describe('staff claimant routes (search + detail)', () => {
   let claimId: string;
   let claimantProfileId: string;
   let claimantUserId: string;
@@ -17,10 +21,19 @@ describe('GET /api/staff/claimants', () => {
   let certificationId: string;
   let caseNoteId: string;
   const legalName = `Search Target ${Date.now()}`;
+  // Distinctive values so the PII-leak assertions below are meaningful: if the
+  // routes ever revert to `include: { user: true }` / `claimant: true`, these
+  // exact strings show up in the response body.
+  const claimantPasswordHash = `sentinel-password-hash-${Date.now()}`;
+  const ssnCiphertext = encryptSSN('123-45-6789');
 
   beforeAll(async () => {
     const claimantUser = await prisma.user.create({
-      data: { email: `claimants-search-test-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+      data: {
+        email: `claimants-search-test-${Date.now()}@example.com`,
+        passwordHash: claimantPasswordHash,
+        role: 'CLAIMANT',
+      },
     });
     claimantUserId = claimantUser.id;
 
@@ -30,7 +43,7 @@ describe('GET /api/staff/claimants', () => {
     caseworkerUserId = caseworkerUser.id;
 
     const profile = await prisma.claimantProfile.create({
-      data: { userId: claimantUser.id, legalName },
+      data: { userId: claimantUser.id, legalName, ssnEncrypted: ssnCiphertext },
     });
     claimantProfileId = profile.id;
 
@@ -92,6 +105,57 @@ describe('GET /api/staff/claimants', () => {
     expect(claim.caseNotes).toHaveLength(1);
     expect(claim.caseNotes[0].id).toBe(caseNoteId);
     expect(claim.caseNotes[0].note).toBe('Called claimant to confirm job-search log.');
+  });
+
+  it('never leaks passwordHash or ssnEncrypted from the search route', async () => {
+    const res = await searchClaimants(
+      new Request(`http://localhost/api/staff/claimants?q=${encodeURIComponent(legalName)}`)
+    );
+    expectNoSensitiveFields(await res.json(), [claimantPasswordHash, ssnCiphertext]);
+  });
+
+  it('returns a single claimant by id with the same nested shape as the search route', async () => {
+    const res = await getClaimantDetail(
+      new Request(`http://localhost/api/staff/claimants/${claimantProfileId}`),
+      { params: { id: claimantProfileId } }
+    );
+    expect(res.status).toBe(200);
+    const claimant = await res.json();
+
+    expect(claimant.id).toBe(claimantProfileId);
+    expect(claimant.legalName).toBe(legalName);
+    expect(claimant.claims).toHaveLength(1);
+    expect(claimant.claims[0].id).toBe(claimId);
+    expect(claimant.claims[0].certifications[0].id).toBe(certificationId);
+    expect(claimant.claims[0].caseNotes[0].id).toBe(caseNoteId);
+  });
+
+  it('never leaks passwordHash or ssnEncrypted from the detail route', async () => {
+    const res = await getClaimantDetail(
+      new Request(`http://localhost/api/staff/claimants/${claimantProfileId}`),
+      { params: { id: claimantProfileId } }
+    );
+    expectNoSensitiveFields(await res.json(), [claimantPasswordHash, ssnCiphertext]);
+  });
+
+  it('rejects a CLAIMANT session on the detail route with 403', async () => {
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce({
+      user: { id: claimantUserId, role: 'CLAIMANT', claimantProfileId, email: 'claimant@example.com' },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    const res = await getClaimantDetail(
+      new Request(`http://localhost/api/staff/claimants/${claimantProfileId}`),
+      { params: { id: claimantProfileId } }
+    );
+    expect(res.status).toBe(403);
+  });
+
+  it('returns 404 for a claimant id that does not exist', async () => {
+    const res = await getClaimantDetail(
+      new Request('http://localhost/api/staff/claimants/does-not-exist'),
+      { params: { id: 'does-not-exist' } }
+    );
+    expect(res.status).toBe(404);
   });
 
   afterAll(async () => {

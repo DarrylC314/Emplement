@@ -1,5 +1,7 @@
 import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { encryptSSN } from '@/lib/encryption';
+import { expectNoSensitiveFields } from '../helpers/pii';
 import { GET as getQueue } from '@/app/api/staff/queue/route';
 
 vi.mock('@/lib/auth', () => ({
@@ -15,13 +17,24 @@ describe('GET /api/staff/queue', () => {
   let userId: string;
   let flaggedCertId: string;
   let approvedCertId: string;
+  // Distinctive values so the PII-leak assertion below is meaningful: if the
+  // route ever reverts to `include: { claim: { include: { claimant: true } } }`,
+  // these exact strings appear in the response body.
+  const claimantPasswordHash = `sentinel-password-hash-${Date.now()}`;
+  const ssnCiphertext = encryptSSN('123-45-6789');
 
   beforeAll(async () => {
     const user = await prisma.user.create({
-      data: { email: `queue-test-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+      data: {
+        email: `queue-test-${Date.now()}@example.com`,
+        passwordHash: claimantPasswordHash,
+        role: 'CLAIMANT',
+      },
     });
     userId = user.id;
-    const profile = await prisma.claimantProfile.create({ data: { userId: user.id } });
+    const profile = await prisma.claimantProfile.create({
+      data: { userId: user.id, ssnEncrypted: ssnCiphertext },
+    });
     claimantProfileId = profile.id;
     const claim = await prisma.claim.create({
       data: {
@@ -69,6 +82,19 @@ describe('GET /api/staff/queue', () => {
     const ids = queue.map((c: { id: string }) => c.id);
     expect(ids).toContain(flaggedCertId);
     expect(ids).not.toContain(approvedCertId);
+  });
+
+  it('returns the claimant fields the dashboard renders', async () => {
+    const res = await getQueue(new Request('http://localhost/api/staff/queue'));
+    const queue = await res.json();
+    const item = queue.find((c: { id: string }) => c.id === flaggedCertId);
+    expect(item.claim.claimant.id).toBe(claimantProfileId);
+    expect(item.autoDecisionReason).toBe('Fewer than 3 job-search contacts.');
+  });
+
+  it('never leaks passwordHash or ssnEncrypted', async () => {
+    const res = await getQueue(new Request('http://localhost/api/staff/queue'));
+    expectNoSensitiveFields(await res.json(), [claimantPasswordHash, ssnCiphertext]);
   });
 
   afterAll(async () => {

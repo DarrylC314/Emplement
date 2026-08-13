@@ -39,6 +39,30 @@ describe('evaluateCertification', () => {
     expect(result.reason).toMatch(/earn/i);
   });
 
+  it('flags reported earnings even when workedThisWeek is false', () => {
+    // Regression: the rule used to require BOTH workedThisWeek AND earnings > 0,
+    // so a claimant reporting earnings while answering "No" to "did you work
+    // this week" fell through to APPROVED — a silent overpayment path. The spec
+    // flags earned income unconditionally.
+    const result = evaluateCertification({
+      ...baseline,
+      workedThisWeek: false,
+      earnings: 150,
+    });
+    expect(result.decision).toBe('FLAGGED');
+    expect(result.reason).toMatch(/earn/i);
+  });
+
+  it('flags reported work even when earnings are zero', () => {
+    const result = evaluateCertification({
+      ...baseline,
+      workedThisWeek: true,
+      earnings: 0,
+    });
+    expect(result.decision).toBe('FLAGGED');
+    expect(result.reason).toMatch(/earn/i);
+  });
+
   it('flags when fewer than 3 job-search contacts are reported', () => {
     const result = evaluateCertification({ ...baseline, jobSearchActivityCount: 2 });
     expect(result.decision).toBe('FLAGGED');
