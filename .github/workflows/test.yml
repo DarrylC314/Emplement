@@ -58,11 +58,11 @@ jobs:
       - name: Install Playwright browser
         run: npx playwright install --with-deps chromium
 
-      # Playwright's webServer builds and serves a production bundle; CI=true
-      # (set by GitHub Actions) makes it start a fresh server rather than
-      # reusing anything already listening.
-      - name: End-to-end tests and accessibility gate
+      # Playwright's webServer runs `next build && next start` (see
+      # package.json's test:e2e:server), so this step already is the
+      # production-build verification — a separate `npm run build` step
+      # afterward would just repeat it. CI=true (set by GitHub Actions) makes
+      # webServer start a fresh server rather than reusing anything already
+      # listening.
+      - name: End-to-end tests, accessibility gate, and production build
         run: npm run test:e2e
-
-      - name: Production build
-        run: npm run build
