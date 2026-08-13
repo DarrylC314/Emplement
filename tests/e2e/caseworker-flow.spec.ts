@@ -100,6 +100,13 @@ test('caseworker can log in, open a flagged case, and record a review decision',
   await page.getByRole('link', { name: /^review$/i }).first().click();
   await expect(page).toHaveURL(new RegExp(`/staff/certifications/${certificationId}/review`));
 
+  // Wait for hydration before submitting. The nav's sign-out button only
+  // renders once useSession() has resolved client-side, so its presence proves
+  // React is live; clicking the submit button before that fires a *native* form
+  // submission (the form's onSubmit handler isn't attached yet), which reloads
+  // the page and loses the validation the next assertion is checking.
+  await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible();
+
   // An empty reason must be reported on the field, not silently submitted.
   await page.getByRole('button', { name: /submit decision/i }).click();
   await expect(page.getByText(/enter a reason for this decision/i).first()).toBeVisible();

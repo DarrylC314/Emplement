@@ -58,6 +58,11 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
   await page.getByRole('link', { name: /certify this week/i }).first().click();
   await expect(page).toHaveURL(/\/claim\/certify\?claimId=/);
   await expect(page.getByRole('heading', { name: /weekly certification/i })).toBeVisible();
+  // Hydration gate: the nav's sign-out button only appears once useSession()
+  // has resolved client-side. Interacting before that submits the form
+  // natively (no React handler attached yet) and silently loses the wizard's
+  // state.
+  await expect(page.getByRole('button', { name: /sign out/i })).toBeVisible();
 
   await page.getByLabel(/week ending date/i).fill('2026-08-15');
   // The wizard starts with one job-search entry; three are required for a
