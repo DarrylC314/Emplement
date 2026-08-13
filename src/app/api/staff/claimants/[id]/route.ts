@@ -62,6 +62,21 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return apiError('Claimant not found', 404);
   }
 
+  // Deliberate, per-record access, unlike the search/queue list routes: a
+  // caseworker opening one specific claimant's case file is exactly the kind
+  // of PII read the spec's AuditLog scope calls for ("every PII read/write
+  // and claim-status change"). List/search views aren't audited the same way
+  // — logging every keystroke of a search or every dashboard-queue load
+  // would be noise, not accountability; opening a specific case file is the
+  // meaningful, auditable event, the same distinction the reveal-ssn route
+  // already draws for SSN access specifically.
+  await writeAuditLog({
+    actorUserId: session!.user.id,
+    action: 'CLAIMANT_RECORD_VIEWED',
+    targetEntity: 'ClaimantProfile',
+    targetId: params.id,
+  });
+
   return Response.json(claimant);
 }
 

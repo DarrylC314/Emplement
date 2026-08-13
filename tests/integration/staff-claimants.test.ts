@@ -7,10 +7,7 @@ import { GET as searchClaimants } from '@/app/api/staff/claimants/route';
 import { GET as getClaimantDetail } from '@/app/api/staff/claimants/[id]/route';
 
 vi.mock('@/lib/auth', () => ({
-  getServerAuthSession: vi.fn().mockResolvedValue({
-    user: { id: 'mock-caseworker-user-id', role: 'CASEWORKER', email: 'mock-caseworker@example.com' },
-    expires: new Date(Date.now() + 3600_000).toISOString(),
-  }),
+  getServerAuthSession: vi.fn(),
 }));
 
 describe('staff claimant routes (search + detail)', () => {
@@ -41,6 +38,15 @@ describe('staff claimant routes (search + detail)', () => {
       data: { email: `claimants-search-caseworker-${Date.now()}@example.com`, passwordHash: 'x', role: 'CASEWORKER' },
     });
     caseworkerUserId = caseworkerUser.id;
+
+    // A real User row, not a placeholder string: the detail route now writes
+    // an AuditLog row on every successful fetch, and AuditLog.actorUserId is
+    // a foreign key — a fake id would fail that constraint the moment the
+    // route is actually exercised.
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: caseworkerUserId, role: 'CASEWORKER', email: caseworkerUser.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
 
     const profile = await prisma.claimantProfile.create({
       data: { userId: claimantUser.id, legalName, ssnEncrypted: ssnCiphertext },
@@ -138,6 +144,35 @@ describe('staff claimant routes (search + detail)', () => {
     expectNoSensitiveFields(await res.json(), [claimantPasswordHash, ssnCiphertext]);
   });
 
+  it('writes an audit log entry when a caseworker views a claimant record, attributed to the session', async () => {
+    const res = await getClaimantDetail(
+      new Request(`http://localhost/api/staff/claimants/${claimantProfileId}`),
+      { params: { id: claimantProfileId } }
+    );
+    expect(res.status).toBe(200);
+
+    const log = await prisma.auditLog.findFirst({
+      where: {
+        actorUserId: caseworkerUserId,
+        action: 'CLAIMANT_RECORD_VIEWED',
+        targetEntity: 'ClaimantProfile',
+        targetId: claimantProfileId,
+      },
+    });
+    expect(log).not.toBeNull();
+  });
+
+  it('does not write an audit log entry for a claimant id that does not exist', async () => {
+    await getClaimantDetail(
+      new Request('http://localhost/api/staff/claimants/does-not-exist'),
+      { params: { id: 'does-not-exist' } }
+    );
+    const log = await prisma.auditLog.findFirst({
+      where: { targetEntity: 'ClaimantProfile', targetId: 'does-not-exist' },
+    });
+    expect(log).toBeNull();
+  });
+
   it('rejects a CLAIMANT session on the detail route with 403', async () => {
     vi.mocked(getServerAuthSession).mockResolvedValueOnce({
       user: { id: claimantUserId, role: 'CLAIMANT', claimantProfileId, email: 'claimant@example.com' },
@@ -159,6 +194,10 @@ describe('staff claimant routes (search + detail)', () => {
   });
 
   afterAll(async () => {
+    // The detail route now writes AuditLog rows (actorUserId: caseworkerUserId)
+    // on every successful fetch — must clear those before the FK-referenced
+    // users can be deleted below.
+    await prisma.auditLog.deleteMany({ where: { actorUserId: caseworkerUserId } });
     await prisma.caseNote.deleteMany({ where: { claimId } });
     await prisma.weeklyCertification.deleteMany({ where: { claimId } });
     await prisma.claim.delete({ where: { id: claimId } });
