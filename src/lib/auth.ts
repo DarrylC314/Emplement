@@ -3,7 +3,7 @@ import { getServerSession } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
-import { checkRateLimit } from '@/lib/rateLimit';
+import { checkRateLimit, clearRateLimit } from '@/lib/rateLimit';
 
 export async function authorizeCredentials(email: string, password: string) {
   // Basic login rate limiting (spec: "Basic rate limiting on login and
@@ -11,12 +11,19 @@ export async function authorizeCredentials(email: string, password: string) {
   // brute-forced from many addresses; returning null surfaces to the client as
   // the same 401 as a bad password, which also avoids telling an attacker
   // whether the account exists.
-  if (!checkRateLimit(`login:${email.toLowerCase()}`).allowed) return null;
+  const rateLimitKey = `login:${email.toLowerCase()}`;
+  if (!checkRateLimit(rateLimitKey).allowed) return null;
 
   const user = await prisma.user.findUnique({ where: { email } });
   if (!user) return null;
   const valid = await bcrypt.compare(password, user.passwordHash);
   if (!valid) return null;
+  // Successful login: clear the window so failed attempts before this one
+  // don't keep counting against the account. Without this, a legitimate
+  // user (or a shared demo account) who mistypes a password a few times
+  // before succeeding, repeated over normal use, could eventually trip the
+  // limiter even though every login has ultimately been valid.
+  clearRateLimit(rateLimitKey);
   const claimantProfile = await prisma.claimantProfile.findUnique({ where: { userId: user.id } });
   return { id: user.id, email: user.email, role: user.role, claimantProfileId: claimantProfile?.id };
 }

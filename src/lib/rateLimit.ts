@@ -42,6 +42,16 @@ export function rateLimitKey(req: Request, scope: string, identifier?: string): 
   return `${scope}:${forwarded || req.headers.get('x-real-ip') || 'unknown'}`;
 }
 
+/**
+ * Clears the window for a single key. Callers should invoke this on a
+ * successful login so failed attempts don't keep counting against an account
+ * indefinitely — without it, a shared/demo account under normal heavy use
+ * could lock itself out even though every attempt eventually succeeded.
+ */
+export function clearRateLimit(key: string): void {
+  windows.delete(key);
+}
+
 /** Test-only: clears all counters so suites don't leak state into each other. */
 export function resetRateLimits(): void {
   windows.clear();

@@ -86,6 +86,23 @@ describe('authorizeCredentials', () => {
     // to speed it up would stop testing the real login path.
   }, 30_000);
 
+  it('a successful login resets the window so earlier mistakes do not count against later attempts', async () => {
+    resetRateLimits();
+    // A couple of mistyped passwords, each followed by the real one — the
+    // kind of pattern normal use produces, not an attack. If successful
+    // logins didn't reset the counter, enough of these over time would
+    // eventually trip the limiter for a legitimate, currently-valid account.
+    for (let round = 1; round <= 3; round += 1) {
+      expect(await authorizeCredentials(claimantEmail, 'WrongPassword123')).toBeNull();
+      expect(await authorizeCredentials(claimantEmail, claimantPassword)).not.toBeNull();
+    }
+    // A 4th round still succeeds — 3 rounds x 1 failure each is under the cap
+    // on its own, but this proves the window was actually cleared each time
+    // rather than merely not-yet-exhausted.
+    expect(await authorizeCredentials(claimantEmail, 'WrongPassword123')).toBeNull();
+    expect(await authorizeCredentials(claimantEmail, claimantPassword)).not.toBeNull();
+  }, 30_000);
+
   afterAll(async () => {
     // Clean up: Delete claimant profile and users using stored IDs
     await prisma.claimantProfile.deleteMany({

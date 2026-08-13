@@ -2,6 +2,7 @@ import { describe, it, expect, beforeEach, vi, afterEach } from 'vitest';
 import {
   RATE_LIMIT_MAX_ATTEMPTS,
   checkRateLimit,
+  clearRateLimit,
   rateLimitKey,
   resetRateLimits,
 } from '@/lib/rateLimit';
@@ -41,6 +42,24 @@ describe('checkRateLimit', () => {
 
     vi.advanceTimersByTime(60_001);
     expect(checkRateLimit('login:someone@example.com').allowed).toBe(true);
+  });
+
+  it('clearRateLimit lets a key resume as if it had never been attempted', () => {
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt += 1) {
+      checkRateLimit('login:someone@example.com');
+    }
+    expect(checkRateLimit('login:someone@example.com').allowed).toBe(false);
+
+    clearRateLimit('login:someone@example.com');
+
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt += 1) {
+      expect(checkRateLimit('login:someone@example.com').allowed).toBe(true);
+    }
+  });
+
+  it('clearRateLimit on an untracked key is a harmless no-op', () => {
+    expect(() => clearRateLimit('login:never-attempted@example.com')).not.toThrow();
+    expect(checkRateLimit('login:never-attempted@example.com').allowed).toBe(true);
   });
 });
 
