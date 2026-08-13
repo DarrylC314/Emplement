@@ -1,6 +1,11 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { POST } from '@/app/api/certifications/route';
+
+vi.mock('@/lib/auth', () => ({
+  getServerAuthSession: vi.fn(),
+}));
 
 describe('POST /api/certifications', () => {
   let claimId: string;
@@ -17,6 +22,12 @@ describe('POST /api/certifications', () => {
       data: { userId: user.id, identityVerificationStatus: 'VERIFIED' },
     });
     claimantProfileId = profile.id;
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: user.id, role: 'CLAIMANT', claimantProfileId: profile.id, email: user.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
     const claim = await prisma.claim.create({
       data: {
         claimantId: profile.id,

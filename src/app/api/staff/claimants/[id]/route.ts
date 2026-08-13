@@ -1,9 +1,17 @@
 import { prisma } from '@/lib/prisma';
 import { writeAuditLog } from '@/lib/audit';
+import { getServerAuthSession } from '@/lib/auth';
+import { requireRole } from '@/lib/rbac';
 
 const EDITABLE_FIELDS = ['legalName', 'phone', 'mailingAddress'] as const;
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerAuthSession();
+  const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
+  if (!access.ok) {
+    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+  }
+
   const body = await req.json();
   const { caseworkerId, ...updates } = body;
   if (!caseworkerId) {

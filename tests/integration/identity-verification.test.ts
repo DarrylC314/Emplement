@@ -1,12 +1,17 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { POST as startVerification } from '@/app/api/identity-verification/start/route';
 import { POST as callbackVerification } from '@/app/api/identity-verification/callback/route';
 
-// This test calls the route handlers directly with a mocked session header
-// approach is simplified here: routes read claimantProfileId from the body
-// for testability, with real session enforcement covered by Task 10's RBAC
-// helper (unit tested separately) and the E2E suite in Task 20.
+vi.mock('@/lib/auth', () => ({
+  getServerAuthSession: vi.fn(),
+}));
+
+// This test calls the route handlers directly with a mocked session.
+// The session mock is set dynamically in beforeAll once the real
+// claimantProfileId fixture exists, so ownership enforcement (a CLAIMANT
+// session's claimantProfileId must match the id the request acts on) passes.
 
 describe('identity verification flow', () => {
   let claimantProfileId: string;
@@ -17,6 +22,11 @@ describe('identity verification flow', () => {
     });
     const profile = await prisma.claimantProfile.create({ data: { userId: user.id } });
     claimantProfileId = profile.id;
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: user.id, role: 'CLAIMANT', claimantProfileId: profile.id, email: user.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
   });
 
   it('starts a verification attempt and returns a mock reference id', async () => {

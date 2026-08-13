@@ -1,8 +1,16 @@
 import { prisma } from '@/lib/prisma';
 import { reviewActionSchema } from '@/lib/validation/review';
 import { writeAuditLog } from '@/lib/audit';
+import { getServerAuthSession } from '@/lib/auth';
+import { requireRole } from '@/lib/rbac';
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerAuthSession();
+  const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
+  if (!access.ok) {
+    return Response.json({ error: 'Unauthorized' }, { status: access.status });
+  }
+
   const body = await req.json();
   const { caseworkerId, ...rest } = body;
   if (!caseworkerId) {

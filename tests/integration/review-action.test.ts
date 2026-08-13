@@ -1,7 +1,14 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { POST } from '@/app/api/certifications/[id]/review/route';
 import { PATCH } from '@/app/api/staff/claimants/[id]/route';
+
+vi.mock('@/lib/auth', () => ({
+  getServerAuthSession: vi.fn().mockResolvedValue({
+    user: { id: 'mock-caseworker-user-id', role: 'CASEWORKER', email: 'mock-caseworker@example.com' },
+    expires: new Date(Date.now() + 3600_000).toISOString(),
+  }),
+}));
 
 describe('review action + claimant record editing', () => {
   let claimId: string;

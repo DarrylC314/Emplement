@@ -1,11 +1,30 @@
-import { describe, it, expect, beforeAll, afterAll } from 'vitest';
+import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
+import { getServerAuthSession } from '@/lib/auth';
 import { POST, GET } from '@/app/api/messages/route';
+
+vi.mock('@/lib/auth', () => ({
+  getServerAuthSession: vi.fn(),
+}));
 
 describe('messages API', () => {
   let claimantProfileId: string;
   let caseworkerId: string;
   let claimantUserId: string;
+
+  function mockCaseworkerSession() {
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: caseworkerId, role: 'CASEWORKER', email: 'mock-caseworker@example.com' },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+  }
+
+  function mockClaimantSession() {
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: claimantUserId, role: 'CLAIMANT', claimantProfileId, email: 'mock-claimant@example.com' },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+  }
 
   beforeAll(async () => {
     const claimantUser = await prisma.user.create({
@@ -21,6 +40,7 @@ describe('messages API', () => {
   });
 
   it('sends a message from a caseworker to a claimant', async () => {
+    mockCaseworkerSession();
     const req = new Request('http://localhost/api/messages', {
       method: 'POST',
       body: JSON.stringify({
@@ -35,6 +55,7 @@ describe('messages API', () => {
   });
 
   it('lists messages for a claimant', async () => {
+    mockClaimantSession();
     const res = await GET(
       new Request(`http://localhost/api/messages?claimantProfileId=${claimantProfileId}`)
     );
@@ -44,6 +65,7 @@ describe('messages API', () => {
   });
 
   it('marks unread messages as read on fetch', async () => {
+    mockCaseworkerSession();
     const sendReq = new Request('http://localhost/api/messages', {
       method: 'POST',
       body: JSON.stringify({
@@ -57,6 +79,7 @@ describe('messages API', () => {
     const sent = await sendRes.json();
     expect(sent.readAt).toBeNull();
 
+    mockClaimantSession();
     const firstGetRes = await GET(
       new Request(`http://localhost/api/messages?claimantProfileId=${claimantProfileId}`)
     );
