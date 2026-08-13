@@ -80,7 +80,11 @@ describe('authorizeCredentials', () => {
 
     resetRateLimits();
     expect(await authorizeCredentials(claimantEmail, claimantPassword)).not.toBeNull();
-  });
+    // Explicit timeout: this test performs seven real credential checks, each
+    // running a bcrypt comparison at cost factor 12 (~250ms), so it legitimately
+    // exceeds vitest's 5s default on a loaded machine. Lowering the cost factor
+    // to speed it up would stop testing the real login path.
+  }, 30_000);
 
   afterAll(async () => {
     // Clean up: Delete claimant profile and users using stored IDs
