@@ -91,7 +91,7 @@ async function main() {
   // exactly what findConflictingWageRecords flags as a conflict.
   const existingWageRecords = await prisma.wageRecord.findFirst({ where: { claimId: claim.id } });
   if (!existingWageRecords) {
-    await prisma.wageRecord.createMany({
+    const seededRecords = await prisma.wageRecord.createMany({
       data: [
         {
           claimId: claim.id,
@@ -122,6 +122,22 @@ async function main() {
           source: 'Simulated state wage database lookup',
         },
       ],
+    });
+
+    // Mirrors the WAGE_LOOKUP_PERFORMED audit entry POST /api/wage-lookup
+    // writes on a real lookup — that entry is the idempotency signal the
+    // route checks before generating new records. Without it here, a
+    // claimant visiting /claim/wage-confirmation for this seeded claim would
+    // never see a "prior lookup", and the route would append a further mock
+    // record on top of these two every time.
+    await prisma.auditLog.create({
+      data: {
+        actorUserId: claimantUser.id,
+        action: 'WAGE_LOOKUP_PERFORMED',
+        targetEntity: 'Claim',
+        targetId: claim.id,
+        metadata: { recordCount: seededRecords.count },
+      },
     });
   }
 
