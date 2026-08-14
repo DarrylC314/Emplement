@@ -30,8 +30,11 @@ export async function POST(req: Request) {
     return apiError('Forbidden', owns.status);
   }
 
-  const existing = await prisma.wageRecord.findMany({ where: { claimId } });
-  if (existing.length > 0) {
+  const priorLookup = await prisma.auditLog.findFirst({
+    where: { targetEntity: 'Claim', targetId: claimId, action: 'WAGE_LOOKUP_PERFORMED' },
+  });
+  if (priorLookup) {
+    const existing = await prisma.wageRecord.findMany({ where: { claimId } });
     return Response.json(existing, { status: 200 });
   }
 
