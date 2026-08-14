@@ -61,11 +61,15 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
   const confirmButton = page.getByRole('button', { name: 'Confirm' }).first();
   const continueButton = page.getByRole('button', { name: /continue to my dashboard/i });
 
-  let confirmCount = 0;
-  while (await confirmButton.isVisible().catch(() => false) && confirmCount < 10) {
+  // Wait for either the Confirm button or the empty-records text to appear
+  await expect(
+    confirmButton.or(page.getByText(/didn't find any employer or wage records/i))
+  ).toBeVisible({ timeout: 10_000 });
+
+  while (await confirmButton.isVisible().catch(() => false)) {
     await confirmButton.click();
-    await page.waitForLoadState('networkidle');
-    confirmCount += 1;
+    // Wait a brief moment for the page to update after the click
+    await page.waitForTimeout(200);
   }
 
   // Wait for continue button to be enabled (visible and not disabled)
