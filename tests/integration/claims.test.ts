@@ -30,7 +30,6 @@ describe('claims API', () => {
       method: 'POST',
       body: JSON.stringify({
         claimantProfileId,
-        employmentHistory: 'Worked at Acme Corp for 3 years as a machinist.',
         reasonForSeparation: 'LAYOFF',
         benefitYearStart: '2026-08-11',
       }),

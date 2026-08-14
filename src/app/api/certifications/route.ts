@@ -67,6 +67,9 @@ export async function POST(req: Request) {
       refusedWork: parsed.data.refusedWork,
       autoDecision: decision.decision,
       autoDecisionReason: decision.reason,
+      autoDecisionRuleId: decision.ruleId,
+      autoDecisionThreshold: decision.threshold,
+      autoDecisionActualValue: decision.actualValue,
       jobSearchActivities: {
         create: parsed.data.jobSearchActivities.map((a) => ({
           employerName: a.employerName,

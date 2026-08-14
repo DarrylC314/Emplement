@@ -48,10 +48,33 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
 
   await expect(page).toHaveURL(/\/claim\/new/);
   await waitForHydration(page);
-  await page.getByLabel(/employment history/i).fill('Worked at Acme Corp for 3 years.');
   await page.getByLabel('Laid off / position eliminated').check();
   await page.getByLabel(/benefit year start date/i).fill('2026-08-11');
   await page.getByRole('button', { name: /submit claim/i }).click();
+
+  await expect(page).toHaveURL(/\/claim\/wage-confirmation/);
+  await waitForHydration(page);
+
+  // The mock wage lookup can deterministically return either an employer
+  // record to confirm or an empty "no records found" state, depending on
+  // the generated claim id — the flow must complete correctly either way.
+  const confirmButton = page.getByRole('button', { name: 'Confirm' }).first();
+  const continueButton = page.getByRole('button', { name: /continue to my dashboard/i });
+
+  // Wait for either the Confirm button or the empty-records text to appear
+  await expect(
+    confirmButton.or(page.getByText(/didn't find any employer or wage records/i))
+  ).toBeVisible({ timeout: 10_000 });
+
+  while (await confirmButton.isVisible().catch(() => false)) {
+    await confirmButton.click();
+    // Wait a brief moment for the page to update after the click
+    await page.waitForTimeout(200);
+  }
+
+  // Wait for continue button to be enabled (visible and not disabled)
+  await expect(continueButton).toBeEnabled({ timeout: 10_000 });
+  await continueButton.click();
 
   await expect(page).toHaveURL(/\/claim\/dashboard/);
   await expect(page.getByText('Active')).toBeVisible();
@@ -107,6 +130,7 @@ test.afterAll(async () => {
       where: { weeklyCertification: { claimId: { in: claimIds } } },
     });
     await prisma.weeklyCertification.deleteMany({ where: { claimId: { in: claimIds } } });
+    await prisma.wageRecord.deleteMany({ where: { claimId: { in: claimIds } } });
     await prisma.claim.deleteMany({ where: { id: { in: claimIds } } });
     if (user.claimantProfile) {
       await prisma.identityVerificationAttempt.deleteMany({

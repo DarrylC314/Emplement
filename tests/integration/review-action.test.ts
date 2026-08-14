@@ -122,6 +122,11 @@ describe('review action + claimant record editing', () => {
       where: { targetEntity: 'ClaimReviewAction', action: 'CLAIM_REVIEWED' },
     });
     expect(log).not.toBeNull();
+
+    const payment = await prisma.payment.findFirst({ where: { weeklyCertificationId: certId } });
+    expect(payment).not.toBeNull();
+    expect(payment?.status).toBe('PAID');
+    expect(Number(payment?.amount)).toBe(320);
   });
 
   it('denies a flagged certification and sets the claim status to DENIED', async () => {
@@ -138,6 +143,10 @@ describe('review action + claimant record editing', () => {
 
     const claim = await prisma.claim.findUnique({ where: { id: deniedClaimId } });
     expect(claim?.status).toBe('DENIED');
+
+    const payment = await prisma.payment.findFirst({ where: { weeklyCertificationId: deniedCertId } });
+    expect(payment).not.toBeNull();
+    expect(payment?.status).toBe('WITHHELD');
   });
 
   it('flags a certification for fraud and restricts the claim', async () => {
@@ -154,6 +163,10 @@ describe('review action + claimant record editing', () => {
 
     const claim = await prisma.claim.findUnique({ where: { id: fraudClaimId } });
     expect(claim?.status).toBe('RESTRICTED');
+
+    const payment = await prisma.payment.findFirst({ where: { weeklyCertificationId: fraudCertId } });
+    expect(payment).not.toBeNull();
+    expect(payment?.status).toBe('WITHHELD');
   });
 
   it('adjusts the weekly benefit amount and records the previous value', async () => {
@@ -174,6 +187,11 @@ describe('review action + claimant record editing', () => {
     const claim = await prisma.claim.findUnique({ where: { id: amountClaimId } });
     expect(Number(claim?.weeklyBenefitAmount)).toBe(410);
     expect(claim?.status).toBe('ACTIVE');
+
+    const payment = await prisma.payment.findFirst({ where: { weeklyCertificationId: amountCertId } });
+    expect(payment).not.toBeNull();
+    expect(payment?.status).toBe('PAID');
+    expect(Number(payment?.amount)).toBe(410);
   });
 
   it('rejects AMOUNT_ADJUSTED with a missing or invalid newValue', async () => {
@@ -272,6 +290,7 @@ describe('review action + claimant record editing', () => {
         OR: [{ targetId: { in: [certId, claimantProfileId] } }, { actorUserId: caseworkerId }],
       },
     });
+    await prisma.payment.deleteMany({ where: { weeklyCertificationId: { in: allCertIds } } });
     await prisma.claimReviewAction.deleteMany({ where: { weeklyCertificationId: { in: allCertIds } } });
     await prisma.weeklyCertification.deleteMany({ where: { claimId: { in: allClaimIds } } });
     await prisma.claim.deleteMany({ where: { id: { in: allClaimIds } } });

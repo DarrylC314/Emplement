@@ -143,6 +143,7 @@ test.afterAll(async () => {
   // also creates ClaimReviewAction and AuditLog rows, which must be removed
   // before the caseworker User they reference.
   await prisma.auditLog.deleteMany({ where: { actorUserId: caseworkerUserId } });
+  await prisma.payment.deleteMany({ where: { weeklyCertificationId: certificationId } });
   await prisma.claimReviewAction.deleteMany({ where: { weeklyCertificationId: certificationId } });
   await prisma.weeklyCertification.deleteMany({ where: { id: certificationId } });
   await prisma.claim.deleteMany({ where: { id: claimId } });

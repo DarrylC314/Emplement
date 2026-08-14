@@ -143,6 +143,22 @@ test.describe('claimant pages', () => {
     await expectNoViolations(page);
   });
 
+  test('/claim/wage-confirmation has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto(`/claim/wage-confirmation?claimId=${claimId}`);
+    await expect(page.getByRole('heading', { name: /confirm your employment/i })).toBeVisible();
+    await waitForHydration(page);
+    // The mock lookup can return either state; both must render accessibly.
+    await expect(
+      page
+        .getByRole('button', { name: 'Confirm' })
+        .first()
+        .or(page.getByText(/didn't find any employer or wage records/i))
+    ).toBeVisible({ timeout: 10_000 });
+    await expectNoViolations(page);
+  });
+
   test('/claim/certify has no automatically detectable accessibility violations', async ({
     page,
   }) => {
@@ -200,6 +216,9 @@ test.describe('staff pages', () => {
   }) => {
     await page.goto(`/staff/certifications/${certificationId}/review`);
     await expect(page.getByRole('heading', { name: /review certification/i })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /employer and wage records/i })
+    ).toBeVisible();
     await expectNoViolations(page);
   });
 });
@@ -215,6 +234,7 @@ test.afterAll(async () => {
   await prisma.jobSearchActivity.deleteMany({
     where: { weeklyCertificationId: certificationId },
   });
+  await prisma.wageRecord.deleteMany({ where: { claimId } });
   await prisma.weeklyCertification.deleteMany({ where: { id: certificationId } });
   await prisma.claim.deleteMany({ where: { id: claimId } });
   await prisma.identityVerificationAttempt.deleteMany({ where: { claimantId: claimantProfileId } });

@@ -19,7 +19,6 @@ const REASONS = [
 export default function NewClaimPage() {
   const { data: session } = useSession();
   const router = useRouter();
-  const [employmentHistory, setEmploymentHistory] = useState('');
   const [reasonForSeparation, setReasonForSeparation] = useState('LAYOFF');
   const [benefitYearStart, setBenefitYearStart] = useState('');
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
@@ -31,16 +30,16 @@ export default function NewClaimPage() {
       method: 'POST',
       body: JSON.stringify({
         claimantProfileId: session?.user.claimantProfileId,
-        employmentHistory,
         reasonForSeparation,
         benefitYearStart,
       }),
     });
     if (res.ok) {
-      router.push('/claim/dashboard');
+      const claim = await res.json();
+      router.push(`/claim/wage-confirmation?claimId=${claim.id}`);
       return;
     }
-    setErrors([{ id: 'employmentHistory', message: 'Please check your entries and try again.' }]);
+    setErrors([{ id: 'benefitYearStart', message: 'Please check your entries and try again.' }]);
   }
 
   return (
@@ -48,18 +47,6 @@ export default function NewClaimPage() {
       <h1 className="text-2xl font-bold mb-4">File a new claim</h1>
       <ErrorSummary errors={errors} />
       <form onSubmit={handleSubmit} noValidate>
-        <div className="mb-4">
-          <label htmlFor="employmentHistory" className="block font-medium mb-1">
-            Employment history
-          </label>
-          <textarea
-            id="employmentHistory"
-            className="w-full rounded border border-border px-3 py-2"
-            value={employmentHistory}
-            onChange={(e) => setEmploymentHistory(e.target.value)}
-            required
-          />
-        </div>
         <Fieldset
           legend="Reason for separation"
           name="reasonForSeparation"
