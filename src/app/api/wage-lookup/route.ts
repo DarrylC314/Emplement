@@ -1,6 +1,5 @@
 import { prisma } from '@/lib/prisma';
 import { generateMockWageRecords } from '@/lib/mockWageLookup';
-import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireOwnership, requireRole } from '@/lib/rbac';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';

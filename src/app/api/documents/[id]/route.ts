@@ -17,7 +17,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     return apiError('Document not found', 404);
   }
 
-  const buffer = await readDocumentFile(document.storedPath);
+  let buffer: Buffer;
+  try {
+    buffer = await readDocumentFile(document.storedPath);
+  } catch {
+    return apiError('Document file is no longer available', 404);
+  }
 
   await writeAuditLog({
     actorUserId: session!.user.id,

@@ -92,6 +92,33 @@ describe('document upload/download', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a CLAIMANT session for upload and download', async () => {
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce({
+      user: { id: claimantUserId, role: 'CLAIMANT', claimantProfileId, email: 'x@example.com' },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    const file = new File([Buffer.from('%PDF-1.4 fake pdf content')], 'evidence.pdf', {
+      type: 'application/pdf',
+    });
+    const formData = new FormData();
+    formData.append('file', file);
+    formData.append('claimId', claimId);
+
+    const uploadReq = new Request('http://localhost/api/documents', { method: 'POST', body: formData });
+    const uploadRes = await POST(uploadReq);
+    expect(uploadRes.status).toBe(403);
+
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce({
+      user: { id: claimantUserId, role: 'CLAIMANT', claimantProfileId, email: 'x@example.com' },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    const downloadRes = await GET(new Request('http://localhost/api/documents/x'), {
+      params: { id: documentId },
+    });
+    expect(downloadRes.status).toBe(403);
+  });
+
   it('downloads the uploaded document and writes an audit log', async () => {
     const res = await GET(new Request('http://localhost/api/documents/x'), {
       params: { id: documentId },

@@ -83,6 +83,48 @@ async function main() {
     });
   }
 
+  // Wage records for the seeded claim, so a fresh seed + login as the
+  // seeded caseworker actually demonstrates the evidence bundle this plan
+  // was built to deliver — including the conflict-flag panel: the seeded
+  // certification above reports no work/earnings for the week, and this
+  // first record has no separation on file (an active job), which is
+  // exactly what findConflictingWageRecords flags as a conflict.
+  const existingWageRecords = await prisma.wageRecord.findFirst({ where: { claimId: claim.id } });
+  if (!existingWageRecords) {
+    await prisma.wageRecord.createMany({
+      data: [
+        {
+          claimId: claim.id,
+          employerName: 'Acme Corp',
+          fein: '43-1234567',
+          workLocation: 'Jefferson City, MO',
+          jobTitle: 'Machinist',
+          firstDayWorked: new Date('2024-06-01'),
+          lastDayWorked: null,
+          wageRate: 22.5,
+          hoursPerWeek: 40,
+          separationReason: 'N/A — no separation on file, job still active',
+          recallDate: null,
+          source: 'Simulated state wage database lookup',
+        },
+        {
+          claimId: claim.id,
+          employerName: 'Riverbend Logistics Inc.',
+          fein: '61-9876543',
+          workLocation: 'Columbia, MO',
+          jobTitle: 'Warehouse Associate',
+          firstDayWorked: new Date('2025-01-10'),
+          lastDayWorked: new Date('2026-07-18'),
+          wageRate: 18.75,
+          hoursPerWeek: 32,
+          separationReason: 'Seasonal layoff',
+          recallDate: null,
+          source: 'Simulated state wage database lookup',
+        },
+      ],
+    });
+  }
+
   console.log('Seed complete: caseworker@example.com / CaseworkerPass123');
   console.log('Seed complete: claimant@example.com / ClaimantPass123 (has a flagged certification)');
 }

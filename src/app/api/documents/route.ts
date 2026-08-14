@@ -29,7 +29,7 @@ export async function POST(req: Request) {
   if (typeof claimId !== 'string' || !claimId) {
     return apiError('claimId is required', 400);
   }
-  if (!(file.type in ALLOWED_DOCUMENT_TYPES)) {
+  if (!ALLOWED_DOCUMENT_TYPES.has(file.type)) {
     return apiError('Only PDF, PNG, or JPEG files are allowed', 400);
   }
   if (file.size > MAX_DOCUMENT_SIZE_BYTES) {
@@ -41,13 +41,24 @@ export async function POST(req: Request) {
     return apiError('Claim not found', 404);
   }
 
+  let validatedCertificationId: string | null = null;
+  if (typeof weeklyCertificationId === 'string' && weeklyCertificationId) {
+    const certification = await prisma.weeklyCertification.findUnique({
+      where: { id: weeklyCertificationId },
+      select: { id: true, claimId: true },
+    });
+    if (!certification || certification.claimId !== claimId) {
+      return apiError('weeklyCertificationId is invalid for this claim', 400);
+    }
+    validatedCertificationId = certification.id;
+  }
+
   const storedPath = await saveDocumentFile(file);
 
   const document = await prisma.document.create({
     data: {
       claimId,
-      weeklyCertificationId:
-        typeof weeklyCertificationId === 'string' && weeklyCertificationId ? weeklyCertificationId : null,
+      weeklyCertificationId: validatedCertificationId,
       uploadedByUserId: session!.user.id,
       filename: file.name,
       storedPath,

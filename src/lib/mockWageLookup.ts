@@ -38,9 +38,13 @@ const TEMPLATES: Template[] = [
     jobTitle: 'Machinist',
     wageRate: 22.5,
     hoursPerWeek: 40,
-    separationReason: 'Laid off — reduction in force',
+    // No separation on file: this employer record models a job that is
+    // still active, which is what lets the conflict detector ever have
+    // something real to flag (a claimant certifying no work/earnings while
+    // an active job is on file). See findConflictingWageRecords.
+    separationReason: 'N/A — no separation on file, job still active',
     daysAgoFirstWorked: 730,
-    daysAgoLastWorked: 14,
+    daysAgoLastWorked: null,
     daysUntilRecall: null,
   },
   {

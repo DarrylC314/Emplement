@@ -34,6 +34,8 @@ function WageConfirmationForm() {
   const [loadError, setLoadError] = useState<string | null>(null);
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
+  const [disputeNoteError, setDisputeNoteError] = useState<string | undefined>();
+  const [actionError, setActionError] = useState<{ recordId: string; message: string } | null>(null);
 
   useEffect(() => {
     if (!claimId) return;
@@ -47,28 +49,38 @@ function WageConfirmationForm() {
   }, [claimId]);
 
   async function handleConfirm(id: string) {
+    setActionError(null);
     const res = await fetch(`/api/wage-records/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ confirmed: true }),
     });
-    if (res.ok) {
-      const updated = await res.json();
-      setRecords((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
+    if (!res.ok) {
+      setActionError({ recordId: id, message: 'We could not save your confirmation. Please try again.' });
+      return;
     }
+    const updated = await res.json();
+    setRecords((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
   }
 
   async function handleDispute(id: string) {
-    if (!disputeNote.trim()) return;
+    if (!disputeNote.trim()) {
+      setDisputeNoteError("Enter what's incorrect before submitting.");
+      return;
+    }
+    setDisputeNoteError(undefined);
+    setActionError(null);
     const res = await fetch(`/api/wage-records/${id}`, {
       method: 'PATCH',
       body: JSON.stringify({ confirmed: true, disputeNote }),
     });
-    if (res.ok) {
-      const updated = await res.json();
-      setRecords((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
-      setCorrectingId(null);
-      setDisputeNote('');
+    if (!res.ok) {
+      setActionError({ recordId: id, message: 'We could not save your correction. Please try again.' });
+      return;
     }
+    const updated = await res.json();
+    setRecords((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
+    setCorrectingId(null);
+    setDisputeNote('');
   }
 
   const allConfirmed = records !== null && records.every((r) => r.claimantConfirmed);
@@ -116,6 +128,11 @@ function WageConfirmationForm() {
                   <dd>{r.separationReason}</dd>
                 </dl>
 
+                {actionError?.recordId === r.id && (
+                  <p role="alert" className="mb-2 text-error-text">
+                    {actionError.message}
+                  </p>
+                )}
                 {r.claimantConfirmed ? (
                   <p role="status" className="text-status-active-text font-medium">
                     {r.claimantDisputeNote ? 'Correction submitted' : '✓ Confirmed'}
@@ -127,6 +144,7 @@ function WageConfirmationForm() {
                       label="What's incorrect?"
                       value={disputeNote}
                       onChange={setDisputeNote}
+                      error={disputeNoteError}
                       required
                     />
                     <Button onClick={() => handleDispute(r.id)}>Submit correction</Button>
@@ -134,7 +152,14 @@ function WageConfirmationForm() {
                 ) : (
                   <div className="flex gap-3">
                     <Button onClick={() => handleConfirm(r.id)}>Confirm</Button>
-                    <Button variant="secondary" onClick={() => { setCorrectingId(r.id); setDisputeNote(''); }}>
+                    <Button
+                      variant="secondary"
+                      onClick={() => {
+                        setCorrectingId(r.id);
+                        setDisputeNote('');
+                        setDisputeNoteError(undefined);
+                      }}
+                    >
                       This isn&apos;t right
                     </Button>
                   </div>

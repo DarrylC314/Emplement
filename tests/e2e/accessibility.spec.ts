@@ -216,6 +216,9 @@ test.describe('staff pages', () => {
   }) => {
     await page.goto(`/staff/certifications/${certificationId}/review`);
     await expect(page.getByRole('heading', { name: /review certification/i })).toBeVisible();
+    await expect(
+      page.getByRole('heading', { name: /employer and wage records/i })
+    ).toBeVisible();
     await expectNoViolations(page);
   });
 });

@@ -278,6 +278,16 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
                         <dd>Unverified — no employer response system available yet</dd>
                         <dt>Source</dt>
                         <dd>{w.source}</dd>
+                        <dt>Claimant confirmation</dt>
+                        <dd>
+                          {w.claimantConfirmed && w.claimantDisputeNote ? (
+                            <span className="text-error-text">⚠ Corrected/disputed by claimant</span>
+                          ) : w.claimantConfirmed ? (
+                            <span className="text-status-active-text">✓ Confirmed by claimant</span>
+                          ) : (
+                            <span className="text-text-secondary">— Not yet confirmed by claimant</span>
+                          )}
+                        </dd>
                       </dl>
                       {w.claimantDisputeNote && (
                         <p role="alert" className="text-error-text">
@@ -357,7 +367,7 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
               </ul>
             )}
             {uploadError && (
-              <p role="alert" className="mb-2 text-error-text">
+              <p id="upload-error" role="alert" className="mb-2 text-error-text">
                 {uploadError}
               </p>
             )}
@@ -365,7 +375,14 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
               <label htmlFor="file" className="block font-medium mb-1">
                 Attach a supporting document (PDF, PNG, or JPEG, up to 10MB)
               </label>
-              <input id="file" name="file" type="file" accept=".pdf,.png,.jpg,.jpeg" className="mb-2" />
+              <input
+                id="file"
+                name="file"
+                type="file"
+                accept=".pdf,.png,.jpg,.jpeg"
+                aria-describedby={uploadError ? 'upload-error' : undefined}
+                className="mb-2"
+              />
               <Button type="submit" disabled={uploading}>
                 {uploading ? 'Uploading…' : 'Upload'}
               </Button>
@@ -409,7 +426,9 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
             </p>
           )}
         </div>
-        <Button type="submit">Submit decision</Button>
+        <Button type="submit" disabled={Boolean(evidenceError)}>
+          Submit decision
+        </Button>
       </form>
     </main>
   );

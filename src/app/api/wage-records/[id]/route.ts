@@ -22,7 +22,7 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
 
   const record = await prisma.wageRecord.findUnique({
     where: { id: params.id },
-    include: { claim: true },
+    select: { claim: { select: { claimantId: true } } },
   });
   if (!record) {
     return apiError('Wage record not found', 404);
@@ -66,6 +66,11 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
     action: disputeNote ? 'WAGE_RECORD_CORRECTED' : 'WAGE_RECORD_CONFIRMED',
     targetEntity: 'WageRecord',
     targetId: params.id,
+    metadata: {
+      correctedFields: Object.keys(corrections).filter(
+        (k) => corrections[k as keyof typeof corrections] !== undefined
+      ),
+    },
   });
 
   return Response.json(updated, { status: 200 });

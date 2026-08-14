@@ -11,15 +11,20 @@ const STORAGE_DIR = process.env.DOCUMENT_STORAGE_PATH ?? './uploads';
 
 export const MAX_DOCUMENT_SIZE_BYTES = 10 * 1024 * 1024;
 
-export const ALLOWED_DOCUMENT_TYPES: Record<string, string> = {
-  'application/pdf': '.pdf',
-  'image/png': '.png',
-  'image/jpeg': '.jpg',
-};
+// A Map (not a plain object literal) so an own-property lookup can never
+// walk the prototype chain — `'constructor' in {}` and `{}['constructor']`
+// are both truthy/defined on an object literal, which would let a
+// Content-Type of "constructor" (or "toString", etc.) slip past an
+// allowlist check built on `in` or bracket access.
+export const ALLOWED_DOCUMENT_TYPES: Map<string, string> = new Map([
+  ['application/pdf', '.pdf'],
+  ['image/png', '.png'],
+  ['image/jpeg', '.jpg'],
+]);
 
 export async function saveDocumentFile(file: File): Promise<string> {
   await fs.mkdir(STORAGE_DIR, { recursive: true });
-  const ext = ALLOWED_DOCUMENT_TYPES[file.type] ?? '';
+  const ext = ALLOWED_DOCUMENT_TYPES.get(file.type) ?? '';
   const storedName = `${crypto.randomUUID()}${ext}`;
   const storedPath = path.join(STORAGE_DIR, storedName);
   const buffer = Buffer.from(await file.arrayBuffer());

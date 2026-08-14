@@ -40,4 +40,17 @@ describe('generateMockWageRecords', () => {
     );
     expect(employerNames.size).toBeGreaterThanOrEqual(2);
   });
+
+  it('can produce a record with lastDayWorked: null (an active job with no separation on file)', () => {
+    // findConflictingWageRecords can only ever flag a conflict when a
+    // generated record has lastDayWorked === null or >= the certification's
+    // weekEndingDate. Since the reference date is fixed in the past relative
+    // to any real certification, only the null case is reachable from this
+    // generator — so at least one hash bucket must produce it, or the
+    // conflict-flag panel is dead code in the running app.
+    const withActiveJob = Array.from({ length: 30 }, (_, i) => generateMockWageRecords(`active-${i}`))
+      .filter((r) => r.length > 0)
+      .find((r) => r[0]!.lastDayWorked === null);
+    expect(withActiveJob).toBeDefined();
+  });
 });
