@@ -14,6 +14,7 @@ type WageRecord = {
   hoursPerWeek: string;
   separationReason: string;
   claimantConfirmed: boolean;
+  claimantDisputeNote: string | null;
 };
 
 export default function WageConfirmationPage() {
@@ -117,7 +118,7 @@ function WageConfirmationForm() {
 
                 {r.claimantConfirmed ? (
                   <p role="status" className="text-status-active-text font-medium">
-                    ✓ Confirmed
+                    {r.claimantDisputeNote ? 'Correction submitted' : '✓ Confirmed'}
                   </p>
                 ) : correctingId === r.id ? (
                   <div>
@@ -133,7 +134,7 @@ function WageConfirmationForm() {
                 ) : (
                   <div className="flex gap-3">
                     <Button onClick={() => handleConfirm(r.id)}>Confirm</Button>
-                    <Button variant="secondary" onClick={() => setCorrectingId(r.id)}>
+                    <Button variant="secondary" onClick={() => { setCorrectingId(r.id); setDisputeNote(''); }}>
                       This isn&apos;t right
                     </Button>
                   </div>
