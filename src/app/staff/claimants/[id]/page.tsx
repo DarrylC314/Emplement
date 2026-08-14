@@ -20,6 +20,12 @@ type ClaimantDetail = {
     }[];
     caseNotes: { id: string; note: string; createdAt: string }[];
   }[];
+  matchedEmploymentEvents: {
+    id: string;
+    type: 'HIRE' | 'SEPARATION';
+    eventDate: string;
+    employer: { companyName: string | null };
+  }[];
 };
 
 export default function ClaimantCasePage({ params }: { params: { id: string } }) {
@@ -172,6 +178,23 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
               <Button type="submit">Reveal SSN</Button>
             </form>
           </>
+        )}
+      </section>
+
+      <section className="border border-border rounded p-4 mb-6">
+        <h2 className="font-medium mb-2">Employer-reported events</h2>
+        {claimant.matchedEmploymentEvents.length === 0 ? (
+          <p className="text-sm text-text-secondary">No employer-reported events on file.</p>
+        ) : (
+          <ul className="space-y-2">
+            {claimant.matchedEmploymentEvents.map((event) => (
+              <li key={event.id} className="text-sm border-t border-border pt-2">
+                {event.type === 'HIRE' ? 'Hired' : 'Separated'} by{' '}
+                {event.employer.companyName ?? 'an employer'} on{' '}
+                {new Date(event.eventDate).toLocaleDateString()}
+              </li>
+            ))}
+          </ul>
         )}
       </section>
 

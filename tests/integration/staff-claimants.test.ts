@@ -17,6 +17,9 @@ describe('staff claimant routes (search + detail)', () => {
   let caseworkerUserId: string;
   let certificationId: string;
   let caseNoteId: string;
+  let employerUserId: string;
+  let employerProfileId: string;
+  let employmentEventId: string;
   const legalName = `Search Target ${Date.now()}`;
   // Distinctive values so the PII-leak assertions below are meaningful: if the
   // routes ever revert to `include: { user: true }` / `claimant: true`, these
@@ -86,6 +89,32 @@ describe('staff claimant routes (search + detail)', () => {
       },
     });
     caseNoteId = caseNote.id;
+
+    const employerUser = await prisma.user.create({
+      data: { email: `claimants-employer-${Date.now()}@example.com`, passwordHash: 'x', role: 'EMPLOYER' },
+    });
+    employerUserId = employerUser.id;
+
+    const employerProfile = await prisma.employerProfile.create({
+      data: {
+        userId: employerUser.id,
+        companyName: 'Test Employer Corp',
+        verificationStatus: 'VERIFIED',
+      },
+    });
+    employerProfileId = employerProfile.id;
+
+    const employmentEvent = await prisma.employmentEvent.create({
+      data: {
+        employerId: employerProfileId,
+        type: 'HIRE',
+        employeeName: 'Test Employee',
+        ssnHash: 'test-hash',
+        eventDate: new Date('2026-08-01'),
+        matchedClaimantProfileId: claimantProfileId,
+      },
+    });
+    employmentEventId = employmentEvent.id;
   });
 
   it('returns matching claimants with nested claim certifications and case notes', async () => {
@@ -134,6 +163,8 @@ describe('staff claimant routes (search + detail)', () => {
     expect(claimant.claims[0].id).toBe(claimId);
     expect(claimant.claims[0].certifications[0].id).toBe(certificationId);
     expect(claimant.claims[0].caseNotes[0].id).toBe(caseNoteId);
+    expect(claimant.matchedEmploymentEvents).toHaveLength(1);
+    expect(claimant.matchedEmploymentEvents[0].type).toBe('HIRE');
   });
 
   it('never leaks passwordHash or ssnEncrypted from the detail route', async () => {
@@ -198,12 +229,15 @@ describe('staff claimant routes (search + detail)', () => {
     // on every successful fetch — must clear those before the FK-referenced
     // users can be deleted below.
     await prisma.auditLog.deleteMany({ where: { actorUserId: caseworkerUserId } });
+    await prisma.employmentEvent.deleteMany({ where: { employerId: employerProfileId } });
+    await prisma.employerProfile.delete({ where: { id: employerProfileId } });
     await prisma.caseNote.deleteMany({ where: { claimId } });
     await prisma.weeklyCertification.deleteMany({ where: { claimId } });
     await prisma.claim.delete({ where: { id: claimId } });
     await prisma.claimantProfile.delete({ where: { id: claimantProfileId } });
     await prisma.user.delete({ where: { id: claimantUserId } });
     await prisma.user.delete({ where: { id: caseworkerUserId } });
+    await prisma.user.delete({ where: { id: employerUserId } });
     await prisma.$disconnect();
   });
 });
