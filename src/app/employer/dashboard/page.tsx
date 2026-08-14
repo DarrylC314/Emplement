@@ -3,6 +3,13 @@
 import { useEffect, useState } from 'react';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { Fieldset } from '@/components/ui/Fieldset';
+import { ErrorSummary } from '@/components/ui/ErrorSummary';
+
+const EVENT_TYPES = [
+  { value: 'HIRE', label: 'Hire' },
+  { value: 'SEPARATION', label: 'Separation' },
+];
 
 type WageRecord = {
   id: string;
@@ -22,6 +29,12 @@ export default function EmployerDashboardPage() {
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
   const [actionError, setActionError] = useState<string | null>(null);
+  const [employeeName, setEmployeeName] = useState('');
+  const [ssn, setSsn] = useState('');
+  const [eventType, setEventType] = useState('HIRE');
+  const [eventDate, setEventDate] = useState('');
+  const [eventErrors, setEventErrors] = useState<{ id: string; message: string }[]>([]);
+  const [eventSuccess, setEventSuccess] = useState<string | null>(null);
 
   async function loadRecords() {
     const res = await fetch('/api/employer/wage-records');
@@ -65,6 +78,33 @@ export default function EmployerDashboardPage() {
     setRecords((prev) => prev?.map((r) => (r.id === id ? updated : r)) ?? null);
     setCorrectingId(null);
     setDisputeNote('');
+  }
+
+  async function handleReportEvent(e: React.FormEvent) {
+    e.preventDefault();
+    setEventErrors([]);
+    setEventSuccess(null);
+    const res = await fetch('/api/employer/events', {
+      method: 'POST',
+      body: JSON.stringify({ employeeName, ssn, type: eventType, eventDate }),
+    });
+    if (res.ok) {
+      setEventSuccess('Event reported.');
+      setEmployeeName('');
+      setSsn('');
+      setEventDate('');
+      return;
+    }
+    const body = await res.json().catch(() => null);
+    const fieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
+    if (fieldErrors) {
+      const summary = Object.entries(fieldErrors)
+        .filter(([, msgs]) => msgs?.[0])
+        .map(([id, msgs]) => ({ id, message: msgs![0]! }));
+      setEventErrors(summary);
+      return;
+    }
+    setEventErrors([{ id: 'employeeName', message: body?.error ?? 'We could not report that event. Please try again.' }]);
   }
 
   return (
@@ -143,6 +183,23 @@ export default function EmployerDashboardPage() {
             ))}
           </ul>
         )}
+      </section>
+
+      <section className="border border-border rounded p-4 mt-6">
+        <h2 className="font-medium mb-2">Report a hire or separation</h2>
+        {eventSuccess && (
+          <p role="status" className="mb-2 text-status-active-text">
+            {eventSuccess}
+          </p>
+        )}
+        <ErrorSummary errors={eventErrors} />
+        <form onSubmit={handleReportEvent} noValidate>
+          <TextField id="employeeName" label="Employee name" value={employeeName} onChange={setEmployeeName} required />
+          <TextField id="ssn" label="Employee Social Security number (123-45-6789)" value={ssn} onChange={setSsn} required />
+          <Fieldset legend="Event type" name="eventType" options={EVENT_TYPES} value={eventType} onChange={setEventType} />
+          <TextField id="eventDate" label="Event date" type="date" value={eventDate} onChange={setEventDate} required />
+          <Button type="submit">Report event</Button>
+        </form>
       </section>
     </main>
   );
