@@ -48,10 +48,29 @@ test('claimant can sign up, verify identity, file a claim, and certify a week', 
 
   await expect(page).toHaveURL(/\/claim\/new/);
   await waitForHydration(page);
-  await page.getByLabel(/employment history/i).fill('Worked at Acme Corp for 3 years.');
   await page.getByLabel('Laid off / position eliminated').check();
   await page.getByLabel(/benefit year start date/i).fill('2026-08-11');
   await page.getByRole('button', { name: /submit claim/i }).click();
+
+  await expect(page).toHaveURL(/\/claim\/wage-confirmation/);
+  await waitForHydration(page);
+
+  // The mock wage lookup can deterministically return either an employer
+  // record to confirm or an empty "no records found" state, depending on
+  // the generated claim id — the flow must complete correctly either way.
+  const confirmButton = page.getByRole('button', { name: 'Confirm' }).first();
+  const continueButton = page.getByRole('button', { name: /continue to my dashboard/i });
+
+  let confirmCount = 0;
+  while (await confirmButton.isVisible().catch(() => false) && confirmCount < 10) {
+    await confirmButton.click();
+    await page.waitForLoadState('networkidle');
+    confirmCount += 1;
+  }
+
+  // Wait for continue button to be enabled (visible and not disabled)
+  await expect(continueButton).toBeEnabled({ timeout: 10_000 });
+  await continueButton.click();
 
   await expect(page).toHaveURL(/\/claim\/dashboard/);
   await expect(page.getByText('Active')).toBeVisible();
@@ -107,6 +126,7 @@ test.afterAll(async () => {
       where: { weeklyCertification: { claimId: { in: claimIds } } },
     });
     await prisma.weeklyCertification.deleteMany({ where: { claimId: { in: claimIds } } });
+    await prisma.wageRecord.deleteMany({ where: { claimId: { in: claimIds } } });
     await prisma.claim.deleteMany({ where: { id: { in: claimIds } } });
     if (user.claimantProfile) {
       await prisma.identityVerificationAttempt.deleteMany({
