@@ -58,6 +58,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
               separationReason: true,
               recallDate: true,
               employerVerifiedStatus: true,
+              employerDisputeNote: true,
               source: true,
               claimantConfirmed: true,
               claimantDisputeNote: true,
