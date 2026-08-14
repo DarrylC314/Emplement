@@ -48,6 +48,20 @@ export async function PATCH(req: Request, { params }: { params: { id: string } }
       employerVerifiedStatus: parsed.data.disputeNote ? 'DISPUTED' : 'VERIFIED',
       employerDisputeNote: parsed.data.disputeNote ?? null,
     },
+    select: {
+      id: true,
+      employerName: true,
+      workLocation: true,
+      jobTitle: true,
+      firstDayWorked: true,
+      lastDayWorked: true,
+      wageRate: true,
+      hoursPerWeek: true,
+      separationReason: true,
+      recallDate: true,
+      employerVerifiedStatus: true,
+      employerDisputeNote: true,
+    },
   });
 
   await writeAuditLog({
