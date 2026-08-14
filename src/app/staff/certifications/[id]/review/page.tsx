@@ -281,7 +281,7 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
                       </dl>
                       {w.claimantDisputeNote && (
                         <p role="alert" className="text-error-text">
-                          Claimant dispute: {w.claimantDisputeNote}
+                          ⚠ Claimant dispute: {w.claimantDisputeNote}
                         </p>
                       )}
                       {conflict && (
