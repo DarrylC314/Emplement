@@ -90,6 +90,29 @@ describe('POST /api/certifications', () => {
     certificationIds.push(cert.id);
   });
 
+  it('persists structured rule metadata alongside the plain-language reason', async () => {
+    const req = new Request('http://localhost/api/certifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimId,
+        weekEndingDate: '2026-08-29',
+        ableAndAvailable: true,
+        workedThisWeek: false,
+        earnings: 0,
+        refusedWork: false,
+        jobSearchActivities: [
+          { employerName: 'Acme', contactMethod: 'Online', contactDate: '2026-08-26', position: 'Machinist' },
+        ],
+      }),
+    });
+    const res = await POST(req);
+    const cert = await res.json();
+    expect(cert.autoDecisionRuleId).toBe('JOB_SEARCH_MINIMUM');
+    expect(cert.autoDecisionThreshold).toBe('3 contacts');
+    expect(cert.autoDecisionActualValue).toBe('1 contacts');
+    certificationIds.push(cert.id);
+  });
+
   it('refuses a certification against a DENIED or CLOSED claim', async () => {
     const closedClaim = await prisma.claim.create({
       data: {

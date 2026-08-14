@@ -11,9 +11,11 @@ const baseline: CertificationInput = {
 
 describe('evaluateCertification', () => {
   it('approves a clean baseline week', () => {
-    expect(evaluateCertification(baseline)).toEqual({
+    const result = evaluateCertification(baseline);
+    expect(result).toEqual({
       decision: 'APPROVED',
       reason: 'All eligibility criteria met.',
+      ruleId: 'ALL_CRITERIA_MET',
     });
   });
 
@@ -21,12 +23,14 @@ describe('evaluateCertification', () => {
     const result = evaluateCertification({ ...baseline, ableAndAvailable: false });
     expect(result.decision).toBe('DENIED');
     expect(result.reason).toMatch(/able.*available/i);
+    expect(result.ruleId).toBe('ABLE_AND_AVAILABLE');
   });
 
   it('flags when work was refused', () => {
     const result = evaluateCertification({ ...baseline, refusedWork: true });
     expect(result.decision).toBe('FLAGGED');
     expect(result.reason).toMatch(/refus/i);
+    expect(result.ruleId).toBe('WORK_REFUSAL');
   });
 
   it('flags when earnings are reported', () => {
@@ -37,6 +41,7 @@ describe('evaluateCertification', () => {
     });
     expect(result.decision).toBe('FLAGGED');
     expect(result.reason).toMatch(/earn/i);
+    expect(result.ruleId).toBe('EARNED_INCOME');
   });
 
   it('flags reported earnings even when workedThisWeek is false', () => {
@@ -51,6 +56,7 @@ describe('evaluateCertification', () => {
     });
     expect(result.decision).toBe('FLAGGED');
     expect(result.reason).toMatch(/earn/i);
+    expect(result.ruleId).toBe('EARNED_INCOME');
   });
 
   it('flags reported work even when earnings are zero', () => {
@@ -61,12 +67,16 @@ describe('evaluateCertification', () => {
     });
     expect(result.decision).toBe('FLAGGED');
     expect(result.reason).toMatch(/earn/i);
+    expect(result.ruleId).toBe('EARNED_INCOME');
   });
 
-  it('flags when fewer than 3 job-search contacts are reported', () => {
+  it('flags when fewer than 3 job-search contacts are reported, with threshold/actualValue set', () => {
     const result = evaluateCertification({ ...baseline, jobSearchActivityCount: 2 });
     expect(result.decision).toBe('FLAGGED');
     expect(result.reason).toMatch(/job.search/i);
+    expect(result.ruleId).toBe('JOB_SEARCH_MINIMUM');
+    expect(result.threshold).toBe('3 contacts');
+    expect(result.actualValue).toBe('2 contacts');
   });
 
   it('denies (not flags) when both not-able/available AND under job-search minimum apply — first match wins', () => {
@@ -76,15 +86,18 @@ describe('evaluateCertification', () => {
       jobSearchActivityCount: 0,
     });
     expect(result.decision).toBe('DENIED');
+    expect(result.ruleId).toBe('ABLE_AND_AVAILABLE');
   });
 
   it('defaults to FLAGGED for a negative job-search count (malformed input, fail-safe)', () => {
     const result = evaluateCertification({ ...baseline, jobSearchActivityCount: -1 });
     expect(result.decision).toBe('FLAGGED');
+    expect(result.ruleId).toBe('INVALID_INPUT');
   });
 
   it('defaults to FLAGGED for negative earnings (malformed input, fail-safe)', () => {
     const result = evaluateCertification({ ...baseline, earnings: -50 });
     expect(result.decision).toBe('FLAGGED');
+    expect(result.ruleId).toBe('INVALID_INPUT');
   });
 });
