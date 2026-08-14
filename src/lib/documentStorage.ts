@@ -22,31 +22,7 @@ export async function saveDocumentFile(file: File): Promise<string> {
   const ext = ALLOWED_DOCUMENT_TYPES[file.type] ?? '';
   const storedName = `${crypto.randomUUID()}${ext}`;
   const storedPath = path.join(STORAGE_DIR, storedName);
-
-  // Extract buffer from the File object
-  // Node.js stores Blob/File implementation details in Symbol(impl)
-  let buffer: Buffer;
-  const fileAny = file as any;
-  const implSymbol = Object.getOwnPropertySymbols(file).find(sym => sym.toString() === 'Symbol(impl)');
-
-  if (implSymbol) {
-    const impl = fileAny[implSymbol] as any;
-    if (impl._buffer) {
-      buffer = impl._buffer;
-    } else if (impl.parts) {
-      // If it has parts array, concatenate them
-      buffer = Buffer.concat(impl.parts.map((p: any) => Buffer.isBuffer(p) ? p : Buffer.from(p)));
-    } else if (typeof fileAny.arrayBuffer === 'function') {
-      buffer = Buffer.from(await fileAny.arrayBuffer());
-    } else {
-      throw new Error('Unable to extract file data');
-    }
-  } else if (typeof fileAny.arrayBuffer === 'function') {
-    buffer = Buffer.from(await fileAny.arrayBuffer());
-  } else {
-    throw new Error('Unable to read file data');
-  }
-
+  const buffer = Buffer.from(await file.arrayBuffer());
   await fs.writeFile(storedPath, buffer);
   return storedPath;
 }

@@ -79,6 +79,19 @@ describe('document upload/download', () => {
     expect(res.status).toBe(400);
   });
 
+  it('rejects a file exceeding the 10MB size limit', async () => {
+    const oversized = new File([Buffer.alloc(11 * 1024 * 1024)], 'huge.pdf', {
+      type: 'application/pdf',
+    });
+    const formData = new FormData();
+    formData.append('file', oversized);
+    formData.append('claimId', claimId);
+
+    const req = new Request('http://localhost/api/documents', { method: 'POST', body: formData });
+    const res = await POST(req);
+    expect(res.status).toBe(400);
+  });
+
   it('downloads the uploaded document and writes an audit log', async () => {
     const res = await GET(new Request('http://localhost/api/documents/x'), {
       params: { id: documentId },
