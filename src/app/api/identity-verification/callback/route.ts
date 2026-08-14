@@ -1,6 +1,7 @@
 import { prisma } from '@/lib/prisma';
 import { identityVerificationSchema } from '@/lib/validation/identity';
 import { encryptSSN } from '@/lib/encryption';
+import { hashSSN } from '@/lib/ssnHash';
 import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireOwnership, requireRole } from '@/lib/rbac';
@@ -44,6 +45,7 @@ export async function POST(req: Request) {
       legalName: parsed.data.legalName,
       dateOfBirth: new Date(parsed.data.dateOfBirth),
       ssnEncrypted: encryptSSN(parsed.data.ssn),
+      ssnHash: hashSSN(parsed.data.ssn),
       phone: parsed.data.phone,
       mailingAddress: parsed.data.mailingAddress,
       identityVerificationStatus: 'VERIFIED',

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
 import { RATE_LIMIT_MAX_ATTEMPTS, resetRateLimits } from '@/lib/rateLimit';
+import { hashSSN } from '@/lib/ssnHash';
 import { POST as startVerification } from '@/app/api/identity-verification/start/route';
 import { POST as callbackVerification } from '@/app/api/identity-verification/callback/route';
 
@@ -59,6 +60,7 @@ describe('identity verification flow', () => {
     const profile = await prisma.claimantProfile.findUnique({ where: { id: claimantProfileId } });
     expect(profile?.identityVerificationStatus).toBe('VERIFIED');
     expect(profile?.ssnEncrypted).not.toContain('123-45-6789');
+    expect(profile?.ssnHash).toBe(hashSSN('123-45-6789'));
 
     const log = await prisma.auditLog.findFirst({
       where: { targetEntity: 'ClaimantProfile', targetId: claimantProfileId, action: 'IDENTITY_VERIFIED' },
