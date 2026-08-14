@@ -191,6 +191,34 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     },
   });
 
+  // Payment ledger: records the amount paid/withheld for this decision — no
+  // real money moves (matching the Phase 1 spec's non-goal of no real
+  // disbursement), this only tracks what the decision implies. An
+  // AMOUNT_ADJUSTED decision is treated as an approval at the corrected
+  // amount, since "adjust weekly benefit amount" is itself the caseworker's
+  // resolution of this week's certification, not a separate approve/deny step.
+  let paymentStatus: 'PAID' | 'WITHHELD' | null = null;
+  let paymentAmount = Number(certification.claim.weeklyBenefitAmount);
+  if (parsed.data.action === 'APPROVED') {
+    paymentStatus = 'PAID';
+  } else if (parsed.data.action === 'DENIED' || parsed.data.action === 'FLAGGED_FOR_FRAUD') {
+    paymentStatus = 'WITHHELD';
+  } else if (parsed.data.action === 'AMOUNT_ADJUSTED') {
+    paymentStatus = 'PAID';
+    paymentAmount = Number(parsed.data.newValue);
+  }
+
+  if (paymentStatus) {
+    await prisma.payment.create({
+      data: {
+        claimId: certification.claimId,
+        weeklyCertificationId: params.id,
+        amount: paymentAmount,
+        status: paymentStatus,
+      },
+    });
+  }
+
   await writeAuditLog({
     actorUserId: session!.user.id,
     action: 'CLAIM_REVIEWED',
