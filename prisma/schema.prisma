@@ -40,6 +40,15 @@ enum ReviewActionType {
   AMOUNT_ADJUSTED
 }
 
+enum PaymentStatus {
+  PAID
+  WITHHELD
+}
+
+enum EmployerVerifiedStatus {
+  UNVERIFIED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -47,11 +56,12 @@ model User {
   role         Role
   createdAt    DateTime @default(now())
 
-  claimantProfile ClaimantProfile?
-  caseNotes       CaseNote[]          @relation("CaseworkerNotes")
-  reviewActions   ClaimReviewAction[] @relation("CaseworkerReviews")
-  sentMessages    Message[]           @relation("CaseworkerMessages")
-  auditLogs       AuditLog[]
+  claimantProfile   ClaimantProfile?
+  caseNotes         CaseNote[]          @relation("CaseworkerNotes")
+  reviewActions     ClaimReviewAction[] @relation("CaseworkerReviews")
+  sentMessages      Message[]           @relation("CaseworkerMessages")
+  auditLogs         AuditLog[]
+  uploadedDocuments Document[]          @relation("DocumentUploader")
 }
 
 model ClaimantProfile {
@@ -95,6 +105,9 @@ model Claim {
 
   certifications WeeklyCertification[]
   caseNotes      CaseNote[]
+  wageRecords    WageRecord[]
+  payments       Payment[]
+  documents      Document[]
 }
 
 model WeeklyCertification {
@@ -109,9 +122,14 @@ model WeeklyCertification {
   refusedWork        Boolean
   autoDecision       AutoDecision
   autoDecisionReason String
+  autoDecisionRuleId       String?
+  autoDecisionThreshold    String?
+  autoDecisionActualValue  String?
 
   jobSearchActivities JobSearchActivity[]
   reviewActions       ClaimReviewAction[]
+  payments            Payment[]
+  documents           Document[]
 }
 
 model JobSearchActivity {
@@ -168,4 +186,49 @@ model AuditLog {
   targetId     String
   timestamp    DateTime @default(now())
   metadata     Json?
+}
+
+model WageRecord {
+  id                     String                 @id @default(cuid())
+  claimId                String
+  claim                  Claim                  @relation(fields: [claimId], references: [id])
+  employerName           String
+  fein                   String
+  workLocation           String
+  jobTitle               String
+  firstDayWorked         DateTime
+  lastDayWorked          DateTime?
+  wageRate               Decimal                @db.Decimal(10, 2)
+  hoursPerWeek           Decimal                @db.Decimal(5, 2)
+  separationReason       String
+  recallDate             DateTime?
+  employerVerifiedStatus EmployerVerifiedStatus @default(UNVERIFIED)
+  source                 String
+  claimantConfirmed      Boolean                @default(false)
+  claimantDisputeNote    String?
+  createdAt              DateTime               @default(now())
+}
+
+model Payment {
+  id                    String              @id @default(cuid())
+  claimId               String
+  claim                 Claim               @relation(fields: [claimId], references: [id])
+  weeklyCertificationId String
+  weeklyCertification   WeeklyCertification @relation(fields: [weeklyCertificationId], references: [id])
+  amount                Decimal             @db.Decimal(10, 2)
+  status                PaymentStatus
+  recordedAt            DateTime            @default(now())
+}
+
+model Document {
+  id                    String               @id @default(cuid())
+  claimId               String
+  claim                 Claim                @relation(fields: [claimId], references: [id])
+  weeklyCertificationId String?
+  weeklyCertification   WeeklyCertification? @relation(fields: [weeklyCertificationId], references: [id])
+  uploadedByUserId      String
+  uploadedBy            User                 @relation("DocumentUploader", fields: [uploadedByUserId], references: [id])
+  filename              String
+  storedPath            String
+  uploadedAt            DateTime             @default(now())
 }
