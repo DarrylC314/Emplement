@@ -89,6 +89,21 @@ export default function Home() {
             </Button>
           </div>
         </section>
+
+        <section className="border border-border rounded p-4">
+          <h2 className="font-medium mb-1">Employers</h2>
+          <p className="text-sm text-text-secondary mb-4">
+            Verify your company, respond to wage records, and report hire or separation events.
+          </p>
+          <div className="flex flex-wrap gap-3">
+            <Link href="/employer/login" className={primaryLinkClasses}>
+              Log in
+            </Link>
+            <Link href="/employer/signup" className={secondaryLinkClasses}>
+              Create an account
+            </Link>
+          </div>
+        </section>
       </div>
     </main>
   );

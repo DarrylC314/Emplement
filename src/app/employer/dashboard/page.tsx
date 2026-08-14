@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import Link from 'next/link';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { Fieldset } from '@/components/ui/Fieldset';
@@ -26,19 +27,26 @@ type WageRecord = {
 export default function EmployerDashboardPage() {
   const [records, setRecords] = useState<WageRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [unverified, setUnverified] = useState(false);
   const [correctingId, setCorrectingId] = useState<string | null>(null);
   const [disputeNote, setDisputeNote] = useState('');
+  const [disputeNoteError, setDisputeNoteError] = useState<string | undefined>();
   const [actionError, setActionError] = useState<string | null>(null);
   const [employeeName, setEmployeeName] = useState('');
   const [ssn, setSsn] = useState('');
   const [eventType, setEventType] = useState('HIRE');
   const [eventDate, setEventDate] = useState('');
   const [eventErrors, setEventErrors] = useState<{ id: string; message: string }[]>([]);
+  const [eventFieldErrors, setEventFieldErrors] = useState<Record<string, string | undefined>>({});
   const [eventSuccess, setEventSuccess] = useState<string | null>(null);
 
   async function loadRecords() {
     const res = await fetch('/api/employer/wage-records');
     if (!res.ok) {
+      if (res.status === 403) {
+        setUnverified(true);
+        return;
+      }
       setLoadError('We could not load your wage records. Please try again.');
       return;
     }
@@ -64,7 +72,11 @@ export default function EmployerDashboardPage() {
   }
 
   async function handleDispute(id: string) {
-    if (!disputeNote.trim()) return;
+    if (!disputeNote.trim()) {
+      setDisputeNoteError("Enter what's incorrect before submitting.");
+      return;
+    }
+    setDisputeNoteError(undefined);
     setActionError(null);
     const res = await fetch(`/api/employer/wage-records/${id}`, {
       method: 'PATCH',
@@ -83,6 +95,7 @@ export default function EmployerDashboardPage() {
   async function handleReportEvent(e: React.FormEvent) {
     e.preventDefault();
     setEventErrors([]);
+    setEventFieldErrors({});
     setEventSuccess(null);
     const res = await fetch('/api/employer/events', {
       method: 'POST',
@@ -96,15 +109,40 @@ export default function EmployerDashboardPage() {
       return;
     }
     const body = await res.json().catch(() => null);
-    const fieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
-    if (fieldErrors) {
-      const summary = Object.entries(fieldErrors)
-        .filter(([, msgs]) => msgs?.[0])
-        .map(([id, msgs]) => ({ id, message: msgs![0]! }));
+    const zodFieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
+    if (zodFieldErrors) {
+      // The Zod schema's field is named `type`, but the form's radio group
+      // (a Fieldset, not a TextField) is `eventType` — map the error onto the
+      // UI field name so it reaches Fieldset's `error` prop, and anchor the
+      // summary link at the Fieldset's own rendered error text (it has no
+      // element with id "eventType"/"type" to jump to otherwise).
+      const nextFieldErrors: Record<string, string> = {};
+      const summary: { id: string; message: string }[] = [];
+      for (const [field, messages] of Object.entries(zodFieldErrors)) {
+        if (!messages?.[0]) continue;
+        const uiField = field === 'type' ? 'eventType' : field;
+        nextFieldErrors[uiField] = messages[0];
+        summary.push({ id: uiField === 'eventType' ? 'eventType-error' : uiField, message: messages[0] });
+      }
+      setEventFieldErrors(nextFieldErrors);
       setEventErrors(summary);
       return;
     }
     setEventErrors([{ id: 'employeeName', message: body?.error ?? 'We could not report that event. Please try again.' }]);
+  }
+
+  if (unverified) {
+    return (
+      <main id="main-content" className="max-w-3xl mx-auto p-8">
+        <h1 className="text-2xl font-bold mb-4">Employer dashboard</h1>
+        <p role="alert" className="mb-2 text-error-text">
+          You need to verify your company before you can respond to wage records or report events.{' '}
+          <Link href="/employer/verify-fein" className="text-link underline">
+            Verify your company →
+          </Link>
+        </p>
+      </main>
+    );
   }
 
   return (
@@ -160,6 +198,7 @@ export default function EmployerDashboardPage() {
                       label="What's incorrect?"
                       value={disputeNote}
                       onChange={setDisputeNote}
+                      error={disputeNoteError}
                       required
                     />
                     <Button onClick={() => handleDispute(r.id)}>Submit dispute</Button>
@@ -173,6 +212,7 @@ export default function EmployerDashboardPage() {
                       onClick={() => {
                         setCorrectingId(r.id);
                         setDisputeNote('');
+                        setDisputeNoteError(undefined);
                       }}
                     >
                       This isn&apos;t right
@@ -194,10 +234,39 @@ export default function EmployerDashboardPage() {
         )}
         <ErrorSummary errors={eventErrors} />
         <form onSubmit={handleReportEvent} noValidate>
-          <TextField id="employeeName" label="Employee name" value={employeeName} onChange={setEmployeeName} required />
-          <TextField id="ssn" label="Employee Social Security number (123-45-6789)" value={ssn} onChange={setSsn} required />
-          <Fieldset legend="Event type" name="eventType" options={EVENT_TYPES} value={eventType} onChange={setEventType} />
-          <TextField id="eventDate" label="Event date" type="date" value={eventDate} onChange={setEventDate} required />
+          <TextField
+            id="employeeName"
+            label="Employee name"
+            value={employeeName}
+            onChange={setEmployeeName}
+            error={eventFieldErrors.employeeName}
+            required
+          />
+          <TextField
+            id="ssn"
+            label="Employee Social Security number (123-45-6789)"
+            value={ssn}
+            onChange={setSsn}
+            error={eventFieldErrors.ssn}
+            required
+          />
+          <Fieldset
+            legend="Event type"
+            name="eventType"
+            options={EVENT_TYPES}
+            value={eventType}
+            onChange={setEventType}
+            error={eventFieldErrors.eventType}
+          />
+          <TextField
+            id="eventDate"
+            label="Event date"
+            type="date"
+            value={eventDate}
+            onChange={setEventDate}
+            error={eventFieldErrors.eventDate}
+            required
+          />
           <Button type="submit">Report event</Button>
         </form>
       </section>

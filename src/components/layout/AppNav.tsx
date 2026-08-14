@@ -15,6 +15,11 @@ const CLAIMANT_LINKS: NavLink[] = [
 
 const STAFF_LINKS: NavLink[] = [{ href: '/staff/dashboard', label: 'Staff dashboard' }];
 
+const EMPLOYER_LINKS: NavLink[] = [
+  { href: '/employer/dashboard', label: 'Dashboard' },
+  { href: '/employer/verify-fein', label: 'Verify your company' },
+];
+
 /**
  * The application's only navigation. Before this, no page linked to any other:
  * /claim/messages and /claim/verify-identity were unreachable except by typing
@@ -33,7 +38,12 @@ export function AppNav() {
 
   if (status !== 'authenticated' || !data?.user) return null;
 
-  const links = data.user.role === 'CLAIMANT' ? CLAIMANT_LINKS : STAFF_LINKS;
+  const links =
+    data.user.role === 'CLAIMANT'
+      ? CLAIMANT_LINKS
+      : data.user.role === 'EMPLOYER'
+        ? EMPLOYER_LINKS
+        : STAFF_LINKS;
 
   return (
     <nav aria-label="Main" className="border-b border-border bg-surface-alt">
