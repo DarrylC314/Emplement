@@ -99,7 +99,6 @@ describe('cross-claimant ownership enforcement (IDOR negative paths)', () => {
       method: 'POST',
       body: JSON.stringify({
         claimantProfileId: profileB.id,
-        employmentHistory: 'Attacker-supplied employment history.',
         reasonForSeparation: 'LAYOFF',
         benefitYearStart: '2026-08-11',
       }),

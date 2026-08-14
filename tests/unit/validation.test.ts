@@ -52,7 +52,6 @@ describe('identityVerificationSchema', () => {
 describe('claimInitiationSchema', () => {
   it('accepts a valid claim initiation payload', () => {
     const result = claimInitiationSchema.safeParse({
-      employmentHistory: 'Worked at Acme Corp for 3 years as a machinist.',
       reasonForSeparation: 'LAYOFF',
       benefitYearStart: '2026-08-11',
     });
@@ -61,7 +60,6 @@ describe('claimInitiationSchema', () => {
 
   it('rejects an invalid reasonForSeparation', () => {
     const result = claimInitiationSchema.safeParse({
-      employmentHistory: 'Worked at Acme Corp.',
       reasonForSeparation: 'MADE_UP_REASON',
       benefitYearStart: '2026-08-11',
     });
