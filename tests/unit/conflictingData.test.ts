@@ -63,4 +63,38 @@ describe('findConflictingWageRecords', () => {
     );
     expect(flags.map((f) => f.wageRecordId)).toEqual(['w2']);
   });
+
+  it('flags a job whose lastDayWorked is exactly the certification week-ending date', () => {
+    const flags = findConflictingWageRecords(
+      { workedThisWeek: false, earnings: 0, weekEndingDate },
+      [{ id: 'w1', lastDayWorked: weekEndingDate, recallDate: null }]
+    );
+    expect(flags).toHaveLength(1);
+  });
+
+  it('does not flag a job whose lastDayWorked is one day before the week-ending date', () => {
+    const dayBefore = new Date(weekEndingDate.getTime() - 24 * 60 * 60 * 1000);
+    const flags = findConflictingWageRecords(
+      { workedThisWeek: false, earnings: 0, weekEndingDate },
+      [{ id: 'w1', lastDayWorked: dayBefore, recallDate: null }]
+    );
+    expect(flags).toEqual([]);
+  });
+
+  it('flags a job whose recallDate is exactly the week-ending date (claimant is due back)', () => {
+    const flags = findConflictingWageRecords(
+      { workedThisWeek: false, earnings: 0, weekEndingDate },
+      [{ id: 'w1', lastDayWorked: null, recallDate: weekEndingDate }]
+    );
+    expect(flags).toHaveLength(1);
+  });
+
+  it('does not flag a job whose recallDate is exactly one day after the week-ending date', () => {
+    const dayAfter = new Date(weekEndingDate.getTime() + 24 * 60 * 60 * 1000);
+    const flags = findConflictingWageRecords(
+      { workedThisWeek: false, earnings: 0, weekEndingDate },
+      [{ id: 'w1', lastDayWorked: null, recallDate: dayAfter }]
+    );
+    expect(flags).toEqual([]);
+  });
 });
