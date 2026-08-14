@@ -1,6 +1,6 @@
 import type { Session } from 'next-auth';
 
-type Role = 'CLAIMANT' | 'CASEWORKER' | 'ADMIN';
+type Role = 'CLAIMANT' | 'CASEWORKER' | 'ADMIN' | 'EMPLOYER';
 
 export function requireRole(
   session: Session | null,
