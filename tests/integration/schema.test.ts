@@ -96,6 +96,57 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: user.id } });
   });
 
+  it('can create and read back an EmployerProfile and EmploymentEvent', async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `schema-test-employer-${Date.now()}@example.com`,
+        passwordHash: 'not-a-real-hash',
+        role: 'EMPLOYER',
+      },
+    });
+
+    const employer = await prisma.employerProfile.create({
+      data: { userId: user.id },
+    });
+    expect(employer.fein).toBeNull();
+    expect(employer.verificationStatus).toBe('PENDING');
+
+    const verifiedEmployer = await prisma.employerProfile.update({
+      where: { id: employer.id },
+      data: { fein: '99-9999999', companyName: 'Schema Test Co', verificationStatus: 'VERIFIED' },
+    });
+    expect(verifiedEmployer.fein).toBe('99-9999999');
+
+    const claimantUser = await prisma.user.create({
+      data: {
+        email: `schema-test-claimant-${Date.now()}@example.com`,
+        passwordHash: 'not-a-real-hash',
+        role: 'CLAIMANT',
+      },
+    });
+    const claimant = await prisma.claimantProfile.create({
+      data: { userId: claimantUser.id, ssnHash: `test-hash-${Date.now()}` },
+    });
+
+    const event = await prisma.employmentEvent.create({
+      data: {
+        employerId: employer.id,
+        type: 'HIRE',
+        employeeName: 'Test Employee',
+        ssnHash: claimant.ssnHash!,
+        eventDate: new Date('2026-08-01'),
+        matchedClaimantProfileId: claimant.id,
+      },
+    });
+    expect(event.matchedClaimantProfileId).toBe(claimant.id);
+
+    await prisma.employmentEvent.delete({ where: { id: event.id } });
+    await prisma.claimantProfile.delete({ where: { id: claimant.id } });
+    await prisma.user.delete({ where: { id: claimantUser.id } });
+    await prisma.employerProfile.delete({ where: { id: employer.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });
