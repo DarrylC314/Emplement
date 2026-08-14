@@ -4,6 +4,123 @@ import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { findConflictingWageRecords } from '@/lib/conflictingData';
+
+export async function GET(_req: Request, { params }: { params: { id: string } }) {
+  const session = await getServerAuthSession();
+  const access = requireRole(session, ['CASEWORKER', 'ADMIN']);
+  if (!access.ok) {
+    return apiError('Unauthorized', access.status);
+  }
+
+  const certification = await prisma.weeklyCertification.findUnique({
+    where: { id: params.id },
+    select: {
+      id: true,
+      weekEndingDate: true,
+      ableAndAvailable: true,
+      workedThisWeek: true,
+      earnings: true,
+      refusedWork: true,
+      autoDecision: true,
+      autoDecisionReason: true,
+      autoDecisionRuleId: true,
+      autoDecisionThreshold: true,
+      autoDecisionActualValue: true,
+      jobSearchActivities: {
+        select: { id: true, employerName: true, contactMethod: true, contactDate: true, position: true },
+      },
+      claim: {
+        select: {
+          id: true,
+          status: true,
+          weeklyBenefitAmount: true,
+          claimant: { select: { legalName: true } },
+          certifications: {
+            orderBy: { weekEndingDate: 'desc' },
+            select: { id: true, weekEndingDate: true, autoDecision: true, autoDecisionReason: true },
+          },
+          caseNotes: {
+            orderBy: { createdAt: 'desc' },
+            select: { id: true, note: true, createdAt: true },
+          },
+          wageRecords: {
+            select: {
+              id: true,
+              employerName: true,
+              fein: true,
+              workLocation: true,
+              jobTitle: true,
+              firstDayWorked: true,
+              lastDayWorked: true,
+              wageRate: true,
+              hoursPerWeek: true,
+              separationReason: true,
+              recallDate: true,
+              employerVerifiedStatus: true,
+              source: true,
+              claimantConfirmed: true,
+              claimantDisputeNote: true,
+            },
+          },
+          documents: {
+            orderBy: { uploadedAt: 'desc' },
+            select: { id: true, filename: true, uploadedAt: true },
+          },
+        },
+      },
+    },
+  });
+
+  if (!certification) {
+    return apiError('Certification not found', 404);
+  }
+
+  const conflicts = findConflictingWageRecords(
+    {
+      workedThisWeek: certification.workedThisWeek,
+      earnings: Number(certification.earnings),
+      weekEndingDate: certification.weekEndingDate,
+    },
+    certification.claim.wageRecords.map((r) => ({
+      id: r.id,
+      lastDayWorked: r.lastDayWorked,
+      recallDate: r.recallDate,
+    }))
+  );
+
+  return Response.json({
+    certification: {
+      id: certification.id,
+      weekEndingDate: certification.weekEndingDate,
+      ableAndAvailable: certification.ableAndAvailable,
+      workedThisWeek: certification.workedThisWeek,
+      earnings: certification.earnings,
+      refusedWork: certification.refusedWork,
+      autoDecision: certification.autoDecision,
+      autoDecisionReason: certification.autoDecisionReason,
+      autoDecisionRuleId: certification.autoDecisionRuleId,
+      autoDecisionThreshold: certification.autoDecisionThreshold,
+      autoDecisionActualValue: certification.autoDecisionActualValue,
+    },
+    jobSearchActivities: certification.jobSearchActivities,
+    claim: {
+      id: certification.claim.id,
+      status: certification.claim.status,
+      weeklyBenefitAmount: certification.claim.weeklyBenefitAmount,
+      claimantName: certification.claim.claimant.legalName,
+    },
+    certificationHistory: certification.claim.certifications.filter((c) => c.id !== certification.id),
+    caseNotes: certification.claim.caseNotes,
+    wageRecords: certification.claim.wageRecords,
+    documents: certification.claim.documents,
+    conflicts,
+    paymentPreview: {
+      approve: certification.claim.weeklyBenefitAmount,
+      deny: certification.claim.weeklyBenefitAmount,
+    },
+  });
+}
 
 export async function POST(req: Request, { params }: { params: { id: string } }) {
   const session = await getServerAuthSession();
