@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { identityVerificationSchema } from '@/lib/validation/identity';
 import { encryptSSN } from '@/lib/encryption';
@@ -39,18 +40,37 @@ export async function POST(req: Request) {
     return Response.json({ errors: parsed.error.flatten() }, { status: 400 });
   }
 
-  const profile = await prisma.claimantProfile.update({
-    where: { id: claimantProfileId },
-    data: {
-      legalName: parsed.data.legalName,
-      dateOfBirth: new Date(parsed.data.dateOfBirth),
-      ssnEncrypted: encryptSSN(parsed.data.ssn),
-      ssnHash: hashSSN(parsed.data.ssn),
-      phone: parsed.data.phone,
-      mailingAddress: parsed.data.mailingAddress,
-      identityVerificationStatus: 'VERIFIED',
-    },
-  });
+  let profile;
+  try {
+    profile = await prisma.claimantProfile.update({
+      where: { id: claimantProfileId },
+      data: {
+        legalName: parsed.data.legalName,
+        dateOfBirth: new Date(parsed.data.dateOfBirth),
+        ssnEncrypted: encryptSSN(parsed.data.ssn),
+        ssnHash: hashSSN(parsed.data.ssn),
+        phone: parsed.data.phone,
+        mailingAddress: parsed.data.mailingAddress,
+        identityVerificationStatus: 'VERIFIED',
+      },
+    });
+  } catch (err) {
+    // ssnHash is @unique. A collision here is not proof of fraud — it just
+    // means we can't safely proceed — and the response must never confirm or
+    // deny that the SSN exists elsewhere: that would recreate exactly the
+    // SSN-existence oracle hashSSN's design (see src/lib/ssnHash.ts) exists to
+    // avoid. Log it for staff follow-up instead of surfacing any detail.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+      await writeAuditLog({
+        actorUserId: session!.user.id,
+        action: 'IDENTITY_VERIFICATION_SSN_CONFLICT',
+        targetEntity: 'ClaimantProfile',
+        targetId: claimantProfileId,
+      });
+      return apiError('We could not verify your identity. Please contact support for assistance.', 409);
+    }
+    throw err;
+  }
 
   await prisma.identityVerificationAttempt.updateMany({
     where: { claimantId: claimantProfileId, status: 'PENDING' },
