@@ -36,7 +36,10 @@ export async function POST(req: Request) {
   // Whether a match was found is never returned to the caller (see the
   // spec's error-handling note): revealing that would let anyone probe
   // whether a given SSN belongs to a claimant in the system.
-  const matchedClaimant = await prisma.claimantProfile.findUnique({ where: { ssnHash } });
+  const matchedClaimant = await prisma.claimantProfile.findUnique({
+    where: { ssnHash },
+    select: { id: true },
+  });
 
   const event = await prisma.employmentEvent.create({
     data: {
