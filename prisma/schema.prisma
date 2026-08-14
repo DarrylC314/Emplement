@@ -12,6 +12,7 @@ enum Role {
   CLAIMANT
   CASEWORKER
   ADMIN
+  EMPLOYER
 }
 
 enum VerificationStatus {
@@ -45,8 +46,15 @@ enum PaymentStatus {
   WITHHELD
 }
 
+enum EmploymentEventType {
+  HIRE
+  SEPARATION
+}
+
 enum EmployerVerifiedStatus {
   UNVERIFIED
+  VERIFIED
+  DISPUTED
 }
 
 model User {
@@ -57,6 +65,7 @@ model User {
   createdAt    DateTime @default(now())
 
   claimantProfile   ClaimantProfile?
+  employerProfile   EmployerProfile?
   caseNotes         CaseNote[]          @relation("CaseworkerNotes")
   reviewActions     ClaimReviewAction[] @relation("CaseworkerReviews")
   sentMessages      Message[]           @relation("CaseworkerMessages")
@@ -71,15 +80,17 @@ model ClaimantProfile {
   legalName                  String?
   dateOfBirth                DateTime?
   ssnEncrypted               String?
+  ssnHash                    String?            @unique
   phone                      String?
   mailingAddress             String?
   identityVerificationStatus VerificationStatus @default(PENDING)
   createdAt                  DateTime           @default(now())
   updatedAt                  DateTime           @updatedAt
 
-  verificationAttempts IdentityVerificationAttempt[]
-  claims               Claim[]
-  messages             Message[]                     @relation("ClaimantMessages")
+  verificationAttempts    IdentityVerificationAttempt[]
+  claims                  Claim[]
+  messages                Message[]                     @relation("ClaimantMessages")
+  matchedEmploymentEvents EmploymentEvent[]
 }
 
 model IdentityVerificationAttempt {
@@ -203,6 +214,7 @@ model WageRecord {
   separationReason       String
   recallDate             DateTime?
   employerVerifiedStatus EmployerVerifiedStatus @default(UNVERIFIED)
+  employerDisputeNote    String?
   source                 String
   claimantConfirmed      Boolean                @default(false)
   claimantDisputeNote    String?
@@ -231,4 +243,29 @@ model Document {
   filename              String
   storedPath            String
   uploadedAt            DateTime             @default(now())
+}
+
+model EmployerProfile {
+  id                 String             @id @default(cuid())
+  userId             String             @unique
+  user               User               @relation(fields: [userId], references: [id])
+  fein               String?            @unique
+  companyName        String?
+  verificationStatus VerificationStatus @default(PENDING)
+  createdAt          DateTime           @default(now())
+
+  employmentEvents EmploymentEvent[]
+}
+
+model EmploymentEvent {
+  id                       String              @id @default(cuid())
+  employerId               String
+  employer                 EmployerProfile     @relation(fields: [employerId], references: [id])
+  type                     EmploymentEventType
+  employeeName             String
+  ssnHash                  String
+  eventDate                DateTime
+  matchedClaimantProfileId String?
+  matchedClaimantProfile   ClaimantProfile?    @relation(fields: [matchedClaimantProfileId], references: [id])
+  createdAt                DateTime            @default(now())
 }

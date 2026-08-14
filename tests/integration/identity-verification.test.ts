@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
 import { RATE_LIMIT_MAX_ATTEMPTS, resetRateLimits } from '@/lib/rateLimit';
+import { hashSSN } from '@/lib/ssnHash';
 import { POST as startVerification } from '@/app/api/identity-verification/start/route';
 import { POST as callbackVerification } from '@/app/api/identity-verification/callback/route';
 
@@ -59,6 +60,7 @@ describe('identity verification flow', () => {
     const profile = await prisma.claimantProfile.findUnique({ where: { id: claimantProfileId } });
     expect(profile?.identityVerificationStatus).toBe('VERIFIED');
     expect(profile?.ssnEncrypted).not.toContain('123-45-6789');
+    expect(profile?.ssnHash).toBe(hashSSN('123-45-6789'));
 
     const log = await prisma.auditLog.findFirst({
       where: { targetEntity: 'ClaimantProfile', targetId: claimantProfileId, action: 'IDENTITY_VERIFIED' },
@@ -96,6 +98,54 @@ describe('identity verification flow', () => {
     );
     expect(res.status).toBe(400);
     expect(await res.json()).toEqual({ error: 'Invalid request body' });
+  });
+
+  it('returns a clean 409 (never revealing the SSN belongs to another profile) on a duplicate SSN', async () => {
+    const otherUser = await prisma.user.create({
+      data: { email: `idv-test-dup-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    const otherProfile = await prisma.claimantProfile.create({ data: { userId: otherUser.id } });
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: otherUser.id, role: 'CLAIMANT', claimantProfileId: otherProfile.id, email: otherUser.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    const req = new Request('http://localhost/api/identity-verification/callback', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimantProfileId: otherProfile.id,
+        legalName: 'Jane Doe',
+        dateOfBirth: '1990-01-15',
+        ssn: '123-45-6789', // same SSN used by claimantProfileId above
+        phone: '5551234567',
+        mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      }),
+    });
+    const res = await callbackVerification(req);
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).not.toMatch(/ssn/i);
+    expect(body.error).not.toMatch(/already registered|belongs to another/i);
+
+    const log = await prisma.auditLog.findFirst({
+      where: {
+        targetEntity: 'ClaimantProfile',
+        targetId: otherProfile.id,
+        action: 'IDENTITY_VERIFICATION_SSN_CONFLICT',
+      },
+    });
+    expect(log).not.toBeNull();
+
+    // Restore the original session for any subsequent tests/afterAll.
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: otherUser.id, role: 'CLAIMANT', claimantProfileId: otherProfile.id, email: otherUser.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    await prisma.auditLog.deleteMany({ where: { targetId: otherProfile.id } });
+    await prisma.claimantProfile.delete({ where: { id: otherProfile.id } });
+    await prisma.user.delete({ where: { id: otherUser.id } });
   });
 
   afterAll(async () => {

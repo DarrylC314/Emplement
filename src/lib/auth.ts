@@ -25,7 +25,14 @@ export async function authorizeCredentials(email: string, password: string) {
   // limiter even though every login has ultimately been valid.
   clearRateLimit(rateLimitKey);
   const claimantProfile = await prisma.claimantProfile.findUnique({ where: { userId: user.id } });
-  return { id: user.id, email: user.email, role: user.role, claimantProfileId: claimantProfile?.id };
+  const employerProfile = await prisma.employerProfile.findUnique({ where: { userId: user.id } });
+  return {
+    id: user.id,
+    email: user.email,
+    role: user.role,
+    claimantProfileId: claimantProfile?.id,
+    employerProfileId: employerProfile?.id,
+  };
 }
 
 export const authOptions: NextAuthOptions = {
@@ -53,16 +60,18 @@ export const authOptions: NextAuthOptions = {
     async jwt({ token, user }) {
       if (user) {
         token.id = (user as { id: string }).id;
-        token.role = (user as unknown as { role: 'CLAIMANT' | 'CASEWORKER' | 'ADMIN' }).role;
+        token.role = (user as unknown as { role: 'CLAIMANT' | 'CASEWORKER' | 'ADMIN' | 'EMPLOYER' }).role;
         token.claimantProfileId = (user as { claimantProfileId?: string }).claimantProfileId;
+        token.employerProfileId = (user as { employerProfileId?: string }).employerProfileId;
       }
       return token;
     },
     async session({ session, token }) {
       if (session.user) {
         session.user.id = token.id as string;
-        session.user.role = token.role as 'CLAIMANT' | 'CASEWORKER' | 'ADMIN';
+        session.user.role = token.role as 'CLAIMANT' | 'CASEWORKER' | 'ADMIN' | 'EMPLOYER';
         session.user.claimantProfileId = token.claimantProfileId as string | undefined;
+        session.user.employerProfileId = token.employerProfileId as string | undefined;
       }
       return session;
     },

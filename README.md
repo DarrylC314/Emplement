@@ -6,7 +6,7 @@ A modernized, 508-compliant rebuild of Emplement, starting with Phase 1: the une
 This project expects a **native local PostgreSQL 16 instance** (not Docker) — see `.env.example` for the default connection string.
 
 Setup:
-1. `cp .env.example .env`, then set real values for `NEXTAUTH_SECRET` (`openssl rand -base64 32`) and `SSN_ENCRYPTION_KEY` (`openssl rand -hex 32`).
+1. `cp .env.example .env`, then set real values for `NEXTAUTH_SECRET` (`openssl rand -base64 32`), `SSN_ENCRYPTION_KEY` (`openssl rand -hex 32`), and `SSN_HASH_KEY` (`openssl rand -hex 32`, distinct from `SSN_ENCRYPTION_KEY`).
 2. Create the app role/database if they don't exist yet:
    ```sql
    CREATE USER emplement WITH PASSWORD 'emplement';

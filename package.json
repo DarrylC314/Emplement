@@ -14,7 +14,8 @@
     "test:e2e:server": "next build && next start",
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
-    "db:seed": "tsx prisma/seed.ts"
+    "db:seed": "tsx prisma/seed.ts",
+    "db:backfill-ssn-hash": "tsx prisma/backfillSsnHash.ts"
   },
   "dependencies": {
     "next": "14.2.5",

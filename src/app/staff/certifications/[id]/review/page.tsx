@@ -59,6 +59,7 @@ type ReviewEvidence = {
     source: string;
     claimantConfirmed: boolean;
     claimantDisputeNote: string | null;
+    employerDisputeNote: string | null;
   }[];
   documents: { id: string; filename: string; uploadedAt: string }[];
   conflicts: { wageRecordId: string; message: string }[];
@@ -275,7 +276,17 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
                         <dt>Recall date</dt>
                         <dd>{w.recallDate ? new Date(w.recallDate).toLocaleDateString() : 'None on file'}</dd>
                         <dt>Employer-verified status</dt>
-                        <dd>Unverified — no employer response system available yet</dd>
+                        <dd>
+                          {w.employerVerifiedStatus === 'VERIFIED' && (
+                            <span className="text-status-active-text">✓ Verified by employer</span>
+                          )}
+                          {w.employerVerifiedStatus === 'DISPUTED' && (
+                            <span className="text-error-text">⚠ Disputed by employer</span>
+                          )}
+                          {w.employerVerifiedStatus === 'UNVERIFIED' && (
+                            <span className="text-text-secondary">— Not yet reviewed by employer</span>
+                          )}
+                        </dd>
                         <dt>Source</dt>
                         <dd>{w.source}</dd>
                         <dt>Claimant confirmation</dt>
@@ -292,6 +303,11 @@ export default function ReviewCertificationPage({ params }: { params: { id: stri
                       {w.claimantDisputeNote && (
                         <p role="alert" className="text-error-text">
                           ⚠ Claimant dispute: {w.claimantDisputeNote}
+                        </p>
+                      )}
+                      {w.employerDisputeNote && (
+                        <p role="alert" className="text-error-text">
+                          ⚠ Employer dispute: {w.employerDisputeNote}
                         </p>
                       )}
                       {conflict && (

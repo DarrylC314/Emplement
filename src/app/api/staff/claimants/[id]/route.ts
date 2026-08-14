@@ -55,6 +55,15 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           },
         },
       },
+      matchedEmploymentEvents: {
+        orderBy: { eventDate: 'desc' },
+        select: {
+          id: true,
+          type: true,
+          eventDate: true,
+          employer: { select: { companyName: true } },
+        },
+      },
     },
   });
 

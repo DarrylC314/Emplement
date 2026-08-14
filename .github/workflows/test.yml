@@ -34,6 +34,7 @@ jobs:
       NEXTAUTH_SECRET: ci-only-secret-do-not-use-anywhere-else=
       NEXTAUTH_URL: http://localhost:3000
       SSN_ENCRYPTION_KEY: 0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+      SSN_HASH_KEY: fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210
 
     steps:
       - uses: actions/checkout@v4

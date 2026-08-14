@@ -79,6 +79,8 @@ describe('GET /api/certifications/[id]/review', () => {
         hoursPerWeek: 40,
         separationReason: 'Laid off',
         source: 'Simulated state wage database lookup',
+        employerVerifiedStatus: 'DISPUTED',
+        employerDisputeNote: 'Wage rate is wrong.',
       },
     });
     wageRecordId = wageRecord.id;
@@ -102,6 +104,8 @@ describe('GET /api/certifications/[id]/review', () => {
     expect(body.caseNotes).toHaveLength(1);
     expect(body.wageRecords).toHaveLength(1);
     expect(body.wageRecords[0].id).toBe(wageRecordId);
+    expect(body.wageRecords[0].employerVerifiedStatus).toBe('DISPUTED');
+    expect(body.wageRecords[0].employerDisputeNote).toBe('Wage rate is wrong.');
     expect(body.conflicts).toHaveLength(1);
     expect(body.conflicts[0].wageRecordId).toBe(wageRecordId);
     expect(Number(body.paymentPreview.approve)).toBe(320);
