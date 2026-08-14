@@ -7,7 +7,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../src/lib/prisma';
 import { waitForHydration } from './helpers';
 
-const PUBLIC_ROUTES = ['/', '/claim/signup', '/claim/login', '/staff/login'];
+const PUBLIC_ROUTES = ['/', '/claim/signup', '/claim/login', '/staff/login', '/employer/signup', '/employer/login'];
 
 async function expectNoViolations(page: Page) {
   const results = await new AxeBuilder({ page })
@@ -37,13 +37,17 @@ for (const route of PUBLIC_ROUTES) {
 const stamp = Date.now();
 const claimantEmail = `e2e-a11y-claimant-${stamp}@example.com`;
 const caseworkerEmail = `e2e-a11y-caseworker-${stamp}@example.com`;
+const employerEmail = `e2e-a11y-employer-${stamp}@example.com`;
 const password = 'A11yTestPass123';
 
 const claimantStatePath = path.join(os.tmpdir(), `a11y-claimant-${stamp}.json`);
 const caseworkerStatePath = path.join(os.tmpdir(), `a11y-caseworker-${stamp}.json`);
+const employerStatePath = path.join(os.tmpdir(), `a11y-employer-${stamp}.json`);
 
 let claimantUserId: string;
 let caseworkerUserId: string;
+let employerUserId: string;
+let employerProfileId: string;
 let claimantProfileId: string;
 let claimId: string;
 let certificationId: string;
@@ -61,6 +65,21 @@ test.beforeAll(async ({ browser }) => {
     data: { email: caseworkerEmail, passwordHash, role: 'CASEWORKER' },
   });
   caseworkerUserId = caseworkerUser.id;
+
+  const employerUser = await prisma.user.create({
+    data: { email: employerEmail, passwordHash, role: 'EMPLOYER' },
+  });
+  employerUserId = employerUser.id;
+
+  const employerProfile = await prisma.employerProfile.create({
+    data: {
+      userId: employerUser.id,
+      fein: '77-7777777',
+      companyName: 'A11y Fixture Employer',
+      verificationStatus: 'VERIFIED',
+    },
+  });
+  employerProfileId = employerProfile.id;
 
   const profile = await prisma.claimantProfile.create({
     data: {
@@ -118,6 +137,7 @@ test.beforeAll(async ({ browser }) => {
   for (const [email, loginPath, expectedUrl, statePath] of [
     [claimantEmail, '/claim/login', /\/claim\/dashboard/, claimantStatePath],
     [caseworkerEmail, '/staff/login', /\/staff\/dashboard/, caseworkerStatePath],
+    [employerEmail, '/employer/login', /\/employer\/dashboard/, employerStatePath],
   ] as const) {
     const context = await browser.newContext();
     const page = await context.newPage();
@@ -223,10 +243,34 @@ test.describe('staff pages', () => {
   });
 });
 
+test.describe('employer pages', () => {
+  test.use({ storageState: employerStatePath });
+
+  test('/employer/verify-fein has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/employer/verify-fein');
+    await expect(page.getByRole('heading', { name: /verify your company/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('/employer/dashboard has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/employer/dashboard');
+    await waitForHydration(page);
+    await expect(page.getByRole('heading', { name: /employer dashboard/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
+});
+
 test.afterAll(async () => {
   await prisma.auditLog.deleteMany({
-    where: { actorUserId: { in: [claimantUserId, caseworkerUserId] } },
+    where: { actorUserId: { in: [claimantUserId, caseworkerUserId, employerUserId] } },
   });
+  await prisma.employmentEvent.deleteMany({ where: { employerId: employerProfileId } });
+  await prisma.employerProfile.deleteMany({ where: { id: employerProfileId } });
+  await prisma.user.deleteMany({ where: { id: employerUserId } });
   await prisma.message.deleteMany({ where: { claimantId: claimantProfileId } });
   await prisma.claimReviewAction.deleteMany({
     where: { weeklyCertificationId: certificationId },
