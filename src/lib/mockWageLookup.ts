@@ -57,6 +57,9 @@ const TEMPLATES: Template[] = [
   },
 ];
 
+// Fixed reference date for deterministic date calculations (matching seed-data convention).
+const REFERENCE_DATE = new Date('2026-08-01T00:00:00Z');
+
 /**
  * Simulated per-claim wage-record lookup. Roughly a third of claims (by hash
  * bucket) return no records at all — "no wage records found" is a real,
@@ -68,9 +71,8 @@ export function generateMockWageRecords(claimId: string): MockWageRecordResult[]
   if (bucket === 2) return [];
 
   const template = TEMPLATES[bucket]!;
-  const now = new Date();
-  const daysAgo = (n: number) => new Date(now.getTime() - n * 24 * 60 * 60 * 1000);
-  const daysFromNow = (n: number) => new Date(now.getTime() + n * 24 * 60 * 60 * 1000);
+  const daysAgo = (n: number) => new Date(REFERENCE_DATE.getTime() - n * 24 * 60 * 60 * 1000);
+  const daysFromNow = (n: number) => new Date(REFERENCE_DATE.getTime() + n * 24 * 60 * 60 * 1000);
 
   return [
     {
