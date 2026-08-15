@@ -31,7 +31,7 @@ type ClaimantDetail = {
   }[];
 };
 
-const PREFIX_LABELS: Record<string, string> = {
+const PREFIX_LABELS: Record<NonNullable<ClaimantDetail['prefix']>, string> = {
   MR: 'Mr.',
   MRS: 'Mrs.',
   MS: 'Ms.',
@@ -39,7 +39,7 @@ const PREFIX_LABELS: Record<string, string> = {
   MX: 'Mx.',
 };
 
-const SUFFIX_LABELS: Record<string, string> = {
+const SUFFIX_LABELS: Record<NonNullable<ClaimantDetail['suffix']>, string> = {
   JR: 'Jr.',
   SR: 'Sr.',
   II: 'II',
