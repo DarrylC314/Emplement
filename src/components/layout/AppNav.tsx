@@ -22,6 +22,7 @@ const STAFF_LINKS: NavLink[] = [
 const EMPLOYER_LINKS: NavLink[] = [
   { href: '/employer/dashboard', label: 'Dashboard' },
   { href: '/employer/verify-fein', label: 'Verify your company' },
+  { href: '/employer/job-postings', label: 'Job postings' },
 ];
 
 /**
