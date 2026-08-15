@@ -175,6 +175,41 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: user.id } });
   });
 
+  it('can create and read back an EmploymentEvent with dismissal fields', async () => {
+    const employerUser = await prisma.user.create({
+      data: { email: `schema-test-employer-dismiss-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'EMPLOYER' },
+    });
+    const employerProfile = await prisma.employerProfile.create({ data: { userId: employerUser.id } });
+
+    const staffUser = await prisma.user.create({
+      data: { email: `schema-test-staff-dismiss-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'CASEWORKER' },
+    });
+
+    const event = await prisma.employmentEvent.create({
+      data: {
+        employerId: employerProfile.id,
+        type: 'HIRE',
+        employeeName: 'Test Employee',
+        ssnHash: `test-hash-${Date.now()}`,
+        eventDate: new Date('2026-08-01'),
+      },
+    });
+    expect(event.dismissedAt).toBeNull();
+    expect(event.dismissedByUserId).toBeNull();
+
+    const dismissed = await prisma.employmentEvent.update({
+      where: { id: event.id },
+      data: { dismissedAt: new Date(), dismissedByUserId: staffUser.id },
+    });
+    expect(dismissed.dismissedAt).not.toBeNull();
+    expect(dismissed.dismissedByUserId).toBe(staffUser.id);
+
+    await prisma.employmentEvent.delete({ where: { id: event.id } });
+    await prisma.employerProfile.delete({ where: { id: employerProfile.id } });
+    await prisma.user.delete({ where: { id: employerUser.id } });
+    await prisma.user.delete({ where: { id: staffUser.id } });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });
