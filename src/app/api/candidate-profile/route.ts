@@ -15,6 +15,13 @@ export async function GET() {
 
   const profile = await prisma.candidateProfile.findUnique({
     where: { claimantProfileId: session!.user.claimantProfileId },
+    select: {
+      id: true,
+      headline: true,
+      skills: true,
+      bio: true,
+      availability: true,
+    },
   });
   if (!profile) {
     return apiError('Candidate profile not found', 404);

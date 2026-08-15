@@ -66,7 +66,9 @@ describe('candidate profile routes', () => {
     const getRes = await getOwnProfile();
     expect(getRes.status).toBe(200);
     const getBody = await getRes.json();
-    expect(getBody.claimantProfileId).toBe(verifiedProfileId);
+    expect(getBody.id).toBe(body.id);
+    expect(getBody.headline).toBe('Warehouse associate');
+    expect(getBody.claimantProfileId).toBeUndefined();
   });
 
   it('rejects a duplicate profile with 409', async () => {
