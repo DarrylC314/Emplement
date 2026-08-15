@@ -30,6 +30,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     select: {
       id: true,
       legalName: true,
+      prefix: true,
+      suffix: true,
+      gender: true,
       user: { select: { email: true } },
       claims: {
         select: {
