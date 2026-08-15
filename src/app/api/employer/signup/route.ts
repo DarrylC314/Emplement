@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { signupSchema } from '@/lib/validation/auth';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { createUserWithProfile } from '@/lib/signup';
 
 // Deliberately separate from /api/signup, which is hardcoded to
 // role: 'CLAIMANT' specifically to prevent self-provisioning any other
@@ -21,11 +22,7 @@ export async function POST(req: Request) {
   }
 
   const passwordHash = await bcrypt.hash(credsParsed.data.password, 12);
-  const user = await prisma.user.create({
-    data: { email: credsParsed.data.email, passwordHash, role: 'EMPLOYER' },
-  });
-
-  await prisma.employerProfile.create({ data: { userId: user.id } });
+  const user = await createUserWithProfile(credsParsed.data.email, passwordHash, 'EMPLOYER');
 
   return Response.json({ id: user.id, email: user.email }, { status: 201 });
 }

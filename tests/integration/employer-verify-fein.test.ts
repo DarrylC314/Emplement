@@ -93,6 +93,34 @@ describe('POST /api/employer/verify-fein', () => {
     await prisma.user.delete({ where: { id: otherUser.id } });
   });
 
+  it('returns a clean 404 (not a 500) when the session references an EmployerProfile that no longer exists', async () => {
+    // M12: a stale employerProfileId in a still-valid JWT (e.g. the profile
+    // row was deleted after the session was minted) used to reach
+    // prisma.employerProfile.update() unguarded and surface Prisma's raw
+    // P2025 "record not found" as an opaque 500.
+    const staleUser = await prisma.user.create({
+      data: { email: `verify-fein-stale-${Date.now()}@example.com`, passwordHash: 'x', role: 'EMPLOYER' },
+    });
+    const staleProfile = await prisma.employerProfile.create({ data: { userId: staleUser.id } });
+    await prisma.employerProfile.delete({ where: { id: staleProfile.id } });
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: staleUser.id, role: 'EMPLOYER', employerProfileId: staleProfile.id, email: staleUser.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    const req = new Request('http://localhost/api/employer/verify-fein', {
+      method: 'POST',
+      body: JSON.stringify({ fein: '12-3456789', companyName: 'Ghost Corp' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(404);
+    const body = await res.json();
+    expect(body.error).toMatch(/employer profile not found/i);
+
+    await prisma.user.delete({ where: { id: staleUser.id } });
+  });
+
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { targetId: employerProfileId } });
     await prisma.employerProfile.delete({ where: { id: employerProfileId } });

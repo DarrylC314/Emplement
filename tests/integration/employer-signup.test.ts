@@ -43,6 +43,31 @@ describe('POST /api/employer/signup', () => {
     expect(res.status).toBe(400);
   });
 
+  it('creates both the User and its EmployerProfile together', async () => {
+    // Regression guard for M8: User + EmployerProfile creation is now wrapped
+    // in a single prisma.$transaction (see src/lib/signup.ts) so a failure
+    // partway through can never leave an orphaned EMPLOYER user with no
+    // profile (which would otherwise 404 on every employer route and 409 on
+    // re-signup, permanently locking the email). We can't easily force a
+    // mid-transaction failure here, so this confirms the successful path:
+    // both rows exist immediately after a 201.
+    const atomicEmail = `employer-signup-atomic-${Date.now()}@example.com`;
+    const req = new Request('http://localhost/api/employer/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email: atomicEmail, password: 'EmployerPass123' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const user = await prisma.user.findUnique({ where: { email: atomicEmail } });
+    expect(user).not.toBeNull();
+    const profile = await prisma.employerProfile.findUnique({ where: { userId: user!.id } });
+    expect(profile).not.toBeNull();
+
+    await prisma.employerProfile.delete({ where: { userId: user!.id } });
+    await prisma.user.delete({ where: { id: user!.id } });
+  });
+
   afterAll(async () => {
     if (employerProfileId) {
       await prisma.employerProfile.delete({ where: { id: employerProfileId } });

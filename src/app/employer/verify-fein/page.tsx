@@ -2,12 +2,14 @@
 
 import { useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { useSession } from 'next-auth/react';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
 
 export default function VerifyFeinPage() {
   const router = useRouter();
+  const { data: session, status } = useSession();
   const [fein, setFein] = useState('');
   const [companyName, setCompanyName] = useState('');
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
@@ -41,6 +43,28 @@ export default function VerifyFeinPage() {
       return;
     }
     setErrors([{ id: 'fein', message: body?.error ?? 'Please check the information you entered and try again.' }]);
+  }
+
+  if (status === 'loading') {
+    return (
+      <main id="main-content" className="max-w-md mx-auto p-8">
+        Loading…
+      </main>
+    );
+  }
+
+  // Same rationale as src/app/employer/dashboard/page.tsx: this is an
+  // authenticated-only page and previously rendered its full form (FEIN +
+  // company name) to any visitor, session or no session.
+  if (status !== 'authenticated' || session?.user.role !== 'EMPLOYER') {
+    return (
+      <main id="main-content" className="max-w-md mx-auto p-8">
+        <h1 className="text-2xl font-bold mb-4">Verify your company</h1>
+        <p role="alert" className="text-error-text">
+          Sign in with an employer account to verify your company.
+        </p>
+      </main>
+    );
   }
 
   return (

@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
 import { hashSSN } from '@/lib/ssnHash';
+import { RATE_LIMIT_MAX_ATTEMPTS, resetRateLimits } from '@/lib/rateLimit';
 import { POST } from '@/app/api/employer/events/route';
 
 vi.mock('@/lib/auth', () => ({
@@ -100,6 +101,36 @@ describe('POST /api/employer/events', () => {
     });
     const res = await POST(req);
     expect(res.status).toBe(400);
+  });
+
+  it('rate limits repeated event reports and refuses with 429', async () => {
+    // M13: keyed by the employer's own profile (events:${employerProfileId}),
+    // not globally, so this throttles one employer account rather than every
+    // employer at once.
+    resetRateLimits();
+    const makeRequest = () =>
+      new Request('http://localhost/api/employer/events', {
+        method: 'POST',
+        body: JSON.stringify({
+          employeeName: 'Rate Limit Probe',
+          ssn: '888-88-8888',
+          type: 'HIRE',
+          eventDate: '2026-08-01',
+        }),
+      });
+
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt += 1) {
+      const res = await POST(makeRequest());
+      expect(res.status).toBe(201);
+      const body = await res.json();
+      eventIds.push(body.id);
+    }
+
+    const blocked = await POST(makeRequest());
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toMatch(/too many/i);
+
+    resetRateLimits();
   });
 
   afterAll(async () => {

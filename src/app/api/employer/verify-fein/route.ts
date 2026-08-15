@@ -62,6 +62,16 @@ export async function POST(req: Request) {
     if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
       return apiError('We could not verify that FEIN. Please check it and try again.', 409);
     }
+    // P2025: the row `update` targeted no longer exists. The `findUnique`
+    // check above already guards the common case, but the profile could
+    // still be deleted in the gap between that read and this write — or, if
+    // this session's JWT was ever minted against a profile that's since
+    // been removed, the row was never there to begin with. Either way this
+    // is a data-integrity edge case, not a privacy-sensitive one, so a plain
+    // 404 is fine.
+    if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2025') {
+      return apiError('Employer profile not found. Please sign in again.', 404);
+    }
     throw err;
   }
 

@@ -2,6 +2,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '@/lib/prisma';
 import { signupSchema } from '@/lib/validation/auth';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { createUserWithProfile } from '@/lib/signup';
 
 export async function POST(req: Request) {
   // Note the deliberately narrow pick below: a `role` field in the body is
@@ -22,11 +23,7 @@ export async function POST(req: Request) {
   }
 
   const passwordHash = await bcrypt.hash(credsParsed.data.password, 12);
-  const user = await prisma.user.create({
-    data: { email: credsParsed.data.email, passwordHash, role: 'CLAIMANT' },
-  });
-
-  await prisma.claimantProfile.create({ data: { userId: user.id } });
+  const user = await createUserWithProfile(credsParsed.data.email, passwordHash, 'CLAIMANT');
 
   return Response.json({ id: user.id, email: user.email }, { status: 201 });
 }

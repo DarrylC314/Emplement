@@ -64,6 +64,30 @@ describe('POST /api/signup', () => {
     expect(res.status).toBe(400);
   });
 
+  it('creates both the User and its ClaimantProfile together', async () => {
+    // Regression guard for M8: User + ClaimantProfile creation is now wrapped
+    // in a single prisma.$transaction (see src/lib/signup.ts) so a failure
+    // partway through can never leave an orphaned User with no profile. We
+    // can't easily force a mid-transaction failure in an integration test,
+    // so this just confirms the successful, atomic-in-practice path: both
+    // rows exist immediately after a 201.
+    const email = `signup-atomic-${Date.now()}@example.com`;
+    const req = new Request('http://localhost/api/signup', {
+      method: 'POST',
+      body: JSON.stringify({ email, password: 'CorrectHorseBattery9', role: 'CLAIMANT' }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(201);
+
+    const user = await prisma.user.findUnique({ where: { email } });
+    expect(user).not.toBeNull();
+    const profile = await prisma.claimantProfile.findUnique({ where: { userId: user!.id } });
+    expect(profile).not.toBeNull();
+
+    await prisma.claimantProfile.delete({ where: { userId: user!.id } });
+    await prisma.user.delete({ where: { id: user!.id } });
+  });
+
   afterAll(async () => {
     const emails = [testEmail, ...(escalationEmail ? [escalationEmail] : [])];
     for (const email of emails) {

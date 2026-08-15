@@ -5,6 +5,7 @@ import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { checkRateLimit, rateLimitKey } from '@/lib/rateLimit';
 
 export async function POST(req: Request) {
   const session = await getServerAuthSession();
@@ -14,6 +15,16 @@ export async function POST(req: Request) {
   }
   if (!session!.user.employerProfileId) {
     return apiError('Employer profile not found', 404);
+  }
+
+  // Basic rate limiting on employer-reported events: this endpoint accepts
+  // an arbitrary SSN on every request and looks it up against the claimant
+  // roster, so it's the same shape of risk the identity-verification
+  // endpoints already guard against. Keyed by the employer's own profile so
+  // one account can't hammer it, rather than a global/IP-based limit.
+  const limit = checkRateLimit(rateLimitKey(req, 'employer-events', session!.user.employerProfileId));
+  if (!limit.allowed) {
+    return apiError('Too many events reported. Please try again in a minute.', 429);
   }
 
   const body = await parseJson<Record<string, unknown>>(req);

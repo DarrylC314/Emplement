@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
+import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
 import { Fieldset } from '@/components/ui/Fieldset';
@@ -17,6 +18,8 @@ type WageRecord = {
   employerName: string;
   workLocation: string;
   jobTitle: string;
+  firstDayWorked: string;
+  lastDayWorked: string | null;
   wageRate: string;
   hoursPerWeek: string;
   separationReason: string;
@@ -25,6 +28,7 @@ type WageRecord = {
 };
 
 export default function EmployerDashboardPage() {
+  const { data: session, status } = useSession();
   const [records, setRecords] = useState<WageRecord[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [unverified, setUnverified] = useState(false);
@@ -54,8 +58,13 @@ export default function EmployerDashboardPage() {
   }
 
   useEffect(() => {
+    // Guards against fetching (and, in loadRecords' 403 branch, exposing the
+    // "verify your company" state) before we know the visitor is actually
+    // signed in as an employer — see the render guard below for the same
+    // check applied to the page itself.
+    if (status !== 'authenticated' || session?.user.role !== 'EMPLOYER') return;
     loadRecords();
-  }, []);
+  }, [status, session?.user.role]);
 
   async function handleVerify(id: string) {
     setActionError(null);
@@ -131,6 +140,30 @@ export default function EmployerDashboardPage() {
     setEventErrors([{ id: 'employeeName', message: body?.error ?? 'We could not report that event. Please try again.' }]);
   }
 
+  if (status === 'loading') {
+    return (
+      <main id="main-content" className="max-w-3xl mx-auto p-8">
+        Loading…
+      </main>
+    );
+  }
+
+  // Unlike the API routes (which are the real enforcement boundary), this
+  // page used to render its full authenticated content — including the SSN
+  // input on the event-reporting form — to anyone, session or no session,
+  // and only fail once they tried to submit. Mirrors the guard pattern in
+  // src/app/staff/dashboard/page.tsx and src/app/claim/dashboard/page.tsx.
+  if (status !== 'authenticated' || session?.user.role !== 'EMPLOYER') {
+    return (
+      <main id="main-content" className="max-w-3xl mx-auto p-8">
+        <h1 className="text-2xl font-bold mb-4">Employer dashboard</h1>
+        <p role="alert" className="text-error-text">
+          Sign in with an employer account to see your dashboard.
+        </p>
+      </main>
+    );
+  }
+
   if (unverified) {
     return (
       <main id="main-content" className="max-w-3xl mx-auto p-8">
@@ -174,6 +207,10 @@ export default function EmployerDashboardPage() {
                   <dd>{r.workLocation}</dd>
                   <dt>Job title</dt>
                   <dd>{r.jobTitle}</dd>
+                  <dt>First day worked</dt>
+                  <dd>{new Date(r.firstDayWorked).toLocaleDateString()}</dd>
+                  <dt>Last day worked</dt>
+                  <dd>{r.lastDayWorked ? new Date(r.lastDayWorked).toLocaleDateString() : '—'}</dd>
                   <dt>Wage rate</dt>
                   <dd>${r.wageRate}/hr</dd>
                   <dt>Hours per week</dt>
