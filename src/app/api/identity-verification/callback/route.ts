@@ -51,6 +51,9 @@ export async function POST(req: Request) {
         ssnHash: hashSSN(parsed.data.ssn),
         phone: parsed.data.phone,
         mailingAddress: parsed.data.mailingAddress,
+        prefix: parsed.data.prefix,
+        suffix: parsed.data.suffix,
+        gender: parsed.data.gender,
         identityVerificationStatus: 'VERIFIED',
       },
     });

@@ -8,6 +8,9 @@ import { TextField } from '@/components/ui/TextField';
 type ClaimantDetail = {
   id: string;
   legalName: string | null;
+  prefix: 'MR' | 'MRS' | 'MS' | 'DR' | 'MX' | null;
+  suffix: 'JR' | 'SR' | 'II' | 'III' | 'IV' | null;
+  gender: string | null;
   claims: {
     id: string;
     status: 'ACTIVE' | 'RESTRICTED' | 'DENIED' | 'CLOSED';
@@ -27,6 +30,28 @@ type ClaimantDetail = {
     employer: { companyName: string | null };
   }[];
 };
+
+const PREFIX_LABELS: Record<NonNullable<ClaimantDetail['prefix']>, string> = {
+  MR: 'Mr.',
+  MRS: 'Mrs.',
+  MS: 'Ms.',
+  DR: 'Dr.',
+  MX: 'Mx.',
+};
+
+const SUFFIX_LABELS: Record<NonNullable<ClaimantDetail['suffix']>, string> = {
+  JR: 'Jr.',
+  SR: 'Sr.',
+  II: 'II',
+  III: 'III',
+  IV: 'IV',
+};
+
+function formatClaimantName(claimant: ClaimantDetail): string {
+  const name = claimant.legalName ?? 'Unnamed claimant';
+  const withPrefix = claimant.prefix ? `${PREFIX_LABELS[claimant.prefix]} ${name}` : name;
+  return claimant.suffix ? `${withPrefix}, ${SUFFIX_LABELS[claimant.suffix]}` : withPrefix;
+}
 
 export default function ClaimantCasePage({ params }: { params: { id: string } }) {
   const [claimant, setClaimant] = useState<ClaimantDetail | null>(null);
@@ -154,7 +179,10 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
 
   return (
     <main id="main-content" className="max-w-3xl mx-auto p-8">
-      <h1 className="text-2xl font-bold mb-4">{claimant.legalName ?? 'Unnamed claimant'}</h1>
+      <h1 className="text-2xl font-bold mb-1">{formatClaimantName(claimant)}</h1>
+      <div className="mb-4">
+        {claimant.gender && <p className="text-text-secondary">Gender: {claimant.gender}</p>}
+      </div>
 
       <section className="border border-border rounded p-4 mb-6">
         <h2 className="font-medium mb-2">Social Security number</h2>

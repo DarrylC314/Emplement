@@ -47,6 +47,123 @@ describe('identityVerificationSchema', () => {
     });
     expect(result.success).toBe(false);
   });
+
+  it('rejects a prefix value not in the enum', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      prefix: 'DOCTOR',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a prefix value that does not match the enum casing', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      prefix: 'dr',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts an empty-string prefix and parses it as undefined', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      prefix: '',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.prefix).toBeUndefined();
+  });
+
+  it('accepts a payload with prefix omitted entirely and parses it as undefined', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.prefix).toBeUndefined();
+  });
+
+  it('rejects a suffix value not in the enum', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      suffix: 'ESQ',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('rejects a suffix value that does not match the enum casing', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      suffix: 'jr',
+    });
+    expect(result.success).toBe(false);
+  });
+
+  it('accepts an empty-string suffix and parses it as undefined', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      suffix: '',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.suffix).toBeUndefined();
+  });
+
+  it('accepts a payload with suffix omitted entirely and parses it as undefined', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+    });
+    expect(result.success).toBe(true);
+    if (result.success) expect(result.data.suffix).toBeUndefined();
+  });
+
+  it('treats explicit null for prefix, suffix, and gender as not provided', () => {
+    const result = identityVerificationSchema.safeParse({
+      legalName: 'Jane Doe',
+      dateOfBirth: '1990-01-15',
+      ssn: '123-45-6789',
+      phone: '5551234567',
+      mailingAddress: '123 Main St, Jefferson City, MO 65101',
+      prefix: null,
+      suffix: null,
+      gender: null,
+    });
+    expect(result.success).toBe(true);
+    if (result.success) {
+      expect(result.data.prefix).toBeUndefined();
+      expect(result.data.suffix).toBeUndefined();
+      expect(result.data.gender).toBeUndefined();
+    }
+  });
 });
 
 describe('claimInitiationSchema', () => {

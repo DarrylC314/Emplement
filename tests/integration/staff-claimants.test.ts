@@ -52,7 +52,7 @@ describe('staff claimant routes (search + detail)', () => {
     });
 
     const profile = await prisma.claimantProfile.create({
-      data: { userId: claimantUser.id, legalName, ssnEncrypted: ssnCiphertext },
+      data: { userId: claimantUser.id, legalName, ssnEncrypted: ssnCiphertext, prefix: 'DR', suffix: 'JR', gender: 'Non-binary' },
     });
     claimantProfileId = profile.id;
 
@@ -159,6 +159,9 @@ describe('staff claimant routes (search + detail)', () => {
 
     expect(claimant.id).toBe(claimantProfileId);
     expect(claimant.legalName).toBe(legalName);
+    expect(claimant.prefix).toBe('DR');
+    expect(claimant.suffix).toBe('JR');
+    expect(claimant.gender).toBe('Non-binary');
     expect(claimant.claims).toHaveLength(1);
     expect(claimant.claims[0].id).toBe(claimId);
     expect(claimant.claims[0].certifications[0].id).toBe(certificationId);

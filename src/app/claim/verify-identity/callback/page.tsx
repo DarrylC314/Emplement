@@ -6,6 +6,23 @@ import { useSession } from 'next-auth/react';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { Select } from '@/components/ui/Select';
+
+const PREFIX_OPTIONS = [
+  { value: 'MR', label: 'Mr.' },
+  { value: 'MRS', label: 'Mrs.' },
+  { value: 'MS', label: 'Ms.' },
+  { value: 'DR', label: 'Dr.' },
+  { value: 'MX', label: 'Mx.' },
+];
+
+const SUFFIX_OPTIONS = [
+  { value: 'JR', label: 'Jr.' },
+  { value: 'SR', label: 'Sr.' },
+  { value: 'II', label: 'II' },
+  { value: 'III', label: 'III' },
+  { value: 'IV', label: 'IV' },
+];
 
 export default function IdentityVerificationCallbackPage() {
   const { data: session } = useSession();
@@ -16,6 +33,9 @@ export default function IdentityVerificationCallbackPage() {
     ssn: '',
     phone: '',
     mailingAddress: '',
+    prefix: '',
+    suffix: '',
+    gender: '',
   });
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
   // Per-field errors, mapped from the API's Zod fieldErrors, so a screen-
@@ -73,6 +93,29 @@ export default function IdentityVerificationCallbackPage() {
         <TextField id="ssn" label="Social Security number (123-45-6789)" value={form.ssn} onChange={(v) => setForm({ ...form, ssn: v })} error={fieldErrors.ssn} required />
         <TextField id="phone" label="Phone number" value={form.phone} onChange={(v) => setForm({ ...form, phone: v })} error={fieldErrors.phone} required />
         <TextField id="mailingAddress" label="Mailing address" value={form.mailingAddress} onChange={(v) => setForm({ ...form, mailingAddress: v })} error={fieldErrors.mailingAddress} required />
+        <Select
+          id="prefix"
+          label="Prefix (optional)"
+          value={form.prefix}
+          onChange={(v) => setForm({ ...form, prefix: v })}
+          options={PREFIX_OPTIONS}
+          error={fieldErrors.prefix}
+        />
+        <Select
+          id="suffix"
+          label="Suffix (optional)"
+          value={form.suffix}
+          onChange={(v) => setForm({ ...form, suffix: v })}
+          options={SUFFIX_OPTIONS}
+          error={fieldErrors.suffix}
+        />
+        <TextField
+          id="gender"
+          label="Gender (optional)"
+          value={form.gender}
+          onChange={(v) => setForm({ ...form, gender: v })}
+          error={fieldErrors.gender}
+        />
         <Button type="submit">Verify identity</Button>
       </form>
     </main>

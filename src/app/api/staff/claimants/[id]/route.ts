@@ -13,10 +13,16 @@ const EDITABLE_FIELDS = ['legalName', 'phone', 'mailingAddress'] as const;
  * pick its claimant out of the response, which capped it at the first 25
  * unordered rows — any claimant past that window was simply unreachable.
  *
- * The `select` below deliberately mirrors the search route's: never
- * `include: { user: true }` (that ships passwordHash to the browser), and no
- * ssnEncrypted (SSN access goes through the audit-logged reveal-ssn endpoint)
- * or unused ClaimantProfile PII (dateOfBirth, phone, mailingAddress).
+ * The `select` below is a superset of the search route's: like that route, it
+ * never uses `include: { user: true }` (that ships passwordHash to the
+ * browser) and never selects ssnEncrypted (SSN access goes through the
+ * audit-logged reveal-ssn endpoint) or unused ClaimantProfile PII
+ * (dateOfBirth, phone, mailingAddress). Unlike that route, it additionally
+ * selects prefix/suffix/gender — those are detail-view-only, added for staff
+ * identification purposes on this audited, single-record view, and
+ * intentionally omitted from the search route's list of many claimants,
+ * where they aren't needed. This divergence is deliberate, not a mirroring
+ * bug.
  */
 export async function GET(_req: Request, { params }: { params: { id: string } }) {
   const session = await getServerAuthSession();
@@ -30,6 +36,9 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     select: {
       id: true,
       legalName: true,
+      prefix: true,
+      suffix: true,
+      gender: true,
       user: { select: { email: true } },
       claims: {
         select: {
