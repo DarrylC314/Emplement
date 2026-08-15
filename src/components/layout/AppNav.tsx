@@ -13,7 +13,10 @@ const CLAIMANT_LINKS: NavLink[] = [
   { href: '/claim/messages', label: 'Messages' },
 ];
 
-const STAFF_LINKS: NavLink[] = [{ href: '/staff/dashboard', label: 'Staff dashboard' }];
+const STAFF_LINKS: NavLink[] = [
+  { href: '/staff/dashboard', label: 'Staff dashboard' },
+  { href: '/staff/unmatched-events', label: 'Unmatched events' },
+];
 
 const EMPLOYER_LINKS: NavLink[] = [
   { href: '/employer/dashboard', label: 'Dashboard' },

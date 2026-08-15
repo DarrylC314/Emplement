@@ -241,6 +241,14 @@ test.describe('staff pages', () => {
     ).toBeVisible();
     await expectNoViolations(page);
   });
+
+  test('/staff/unmatched-events has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/staff/unmatched-events');
+    await expect(page.getByRole('heading', { name: /unmatched employer events/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
 });
 
 test.describe('employer pages', () => {

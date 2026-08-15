@@ -87,6 +87,7 @@ model User {
   sentMessages      Message[]           @relation("CaseworkerMessages")
   auditLogs         AuditLog[]
   uploadedDocuments Document[]          @relation("DocumentUploader")
+  dismissedEmploymentEvents EmploymentEvent[]
 }
 
 model ClaimantProfile {
@@ -287,4 +288,7 @@ model EmploymentEvent {
   matchedClaimantProfileId String?
   matchedClaimantProfile   ClaimantProfile?    @relation(fields: [matchedClaimantProfileId], references: [id])
   createdAt                DateTime            @default(now())
+  dismissedAt       DateTime?
+  dismissedByUserId String?
+  dismissedBy       User?     @relation(fields: [dismissedByUserId], references: [id])
 }

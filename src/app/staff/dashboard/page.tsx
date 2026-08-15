@@ -14,8 +14,34 @@ type QueueItem = {
 type ClaimantResult = {
   id: string;
   legalName: string | null;
+  prefix: 'MR' | 'MRS' | 'MS' | 'DR' | 'MX' | null;
+  suffix: 'JR' | 'SR' | 'II' | 'III' | 'IV' | null;
+  gender: string | null;
+  dateOfBirth: string | null;
   user: { email: string };
 };
+
+const PREFIX_LABELS: Record<NonNullable<ClaimantResult['prefix']>, string> = {
+  MR: 'Mr.',
+  MRS: 'Mrs.',
+  MS: 'Ms.',
+  DR: 'Dr.',
+  MX: 'Mx.',
+};
+
+const SUFFIX_LABELS: Record<NonNullable<ClaimantResult['suffix']>, string> = {
+  JR: 'Jr.',
+  SR: 'Sr.',
+  II: 'II',
+  III: 'III',
+  IV: 'IV',
+};
+
+function formatClaimantName(claimant: ClaimantResult): string {
+  const name = claimant.legalName ?? claimant.user.email;
+  const withPrefix = claimant.prefix ? `${PREFIX_LABELS[claimant.prefix]} ${name}` : name;
+  return claimant.suffix ? `${withPrefix}, ${SUFFIX_LABELS[claimant.suffix]}` : withPrefix;
+}
 
 export default function StaffDashboardPage() {
   const { data: session } = useSession();
@@ -87,7 +113,21 @@ export default function StaffDashboardPage() {
         <ul className="space-y-3">
           {results.map((claimant) => (
             <li key={claimant.id} className="border border-border rounded p-4">
-              <p className="font-medium">{claimant.legalName ?? claimant.user.email}</p>
+              <p className="font-medium">{formatClaimantName(claimant)}</p>
+              {(claimant.gender || claimant.dateOfBirth) && (
+                <p className="text-sm text-text-secondary">
+                  {claimant.gender && `Gender: ${claimant.gender}`}
+                  {claimant.gender && claimant.dateOfBirth && ' — '}
+                  {claimant.dateOfBirth &&
+                    // Pinned to UTC specifically for this field: Prisma
+                    // serializes dateOfBirth as UTC midnight, and this
+                    // workflow relies on DOB for claimant disambiguation, so
+                    // it can't render a day early for viewers west of UTC
+                    // the way the app's other (lower-stakes) date displays
+                    // do.
+                    `DOB: ${new Date(claimant.dateOfBirth).toLocaleDateString(undefined, { timeZone: 'UTC' })}`}
+                </p>
+              )}
               <Link href={`/staff/claimants/${claimant.id}`} className="text-link underline">
                 Review case
               </Link>
