@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui/Button';
 
 type UnmatchedEvent = {
   id: string;
@@ -16,6 +17,7 @@ export default function UnmatchedEventsPage() {
   const { data: session, status } = useSession();
   const [events, setEvents] = useState<UnmatchedEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
 
   async function loadEvents() {
     setLoadError(null);
@@ -32,6 +34,20 @@ export default function UnmatchedEventsPage() {
       loadEvents();
     }
   }, [status, session]);
+
+  async function handleRetry(id: string) {
+    setActionError(null);
+    const res = await fetch(`/api/staff/unmatched-events/${id}/retry`, { method: 'POST' });
+    if (!res.ok) {
+      setActionError(
+        res.status === 404
+          ? 'No claimant found for this event yet.'
+          : 'We could not retry this match. Please try again.'
+      );
+      return;
+    }
+    setEvents((prev) => prev?.filter((e) => e.id !== id) ?? null);
+  }
 
   if (status === 'loading') {
     return (
@@ -57,6 +73,11 @@ export default function UnmatchedEventsPage() {
           {loadError}
         </p>
       )}
+      {actionError && (
+        <p role="alert" className="mb-4 text-error-text">
+          {actionError}
+        </p>
+      )}
       {events === null && !loadError && <p>Loading…</p>}
       {events !== null && events.length === 0 && (
         <p className="text-sm text-text-secondary">No unmatched events on file.</p>
@@ -72,6 +93,7 @@ export default function UnmatchedEventsPage() {
                 Reported by {event.employer.companyName ?? 'an employer'} — event date{' '}
                 {new Date(event.eventDate).toLocaleDateString()}
               </p>
+              <Button onClick={() => handleRetry(event.id)}>Retry</Button>
             </li>
           ))}
         </ul>
