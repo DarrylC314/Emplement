@@ -147,6 +147,34 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: user.id } });
   });
 
+  it('can create and read back a ClaimantProfile with prefix, suffix, and gender', async () => {
+    const user = await prisma.user.create({
+      data: {
+        email: `schema-test-identity-${Date.now()}@example.com`,
+        passwordHash: 'not-a-real-hash',
+        role: 'CLAIMANT',
+      },
+    });
+
+    const profile = await prisma.claimantProfile.create({
+      data: { userId: user.id },
+    });
+    expect(profile.prefix).toBeNull();
+    expect(profile.suffix).toBeNull();
+    expect(profile.gender).toBeNull();
+
+    const updated = await prisma.claimantProfile.update({
+      where: { id: profile.id },
+      data: { prefix: 'DR', suffix: 'JR', gender: 'Non-binary' },
+    });
+    expect(updated.prefix).toBe('DR');
+    expect(updated.suffix).toBe('JR');
+    expect(updated.gender).toBe('Non-binary');
+
+    await prisma.claimantProfile.delete({ where: { id: profile.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });

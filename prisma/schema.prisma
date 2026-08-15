@@ -57,6 +57,22 @@ enum EmployerVerifiedStatus {
   DISPUTED
 }
 
+enum NamePrefix {
+  MR
+  MRS
+  MS
+  DR
+  MX
+}
+
+enum NameSuffix {
+  JR
+  SR
+  II
+  III
+  IV
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -81,6 +97,9 @@ model ClaimantProfile {
   dateOfBirth                DateTime?
   ssnEncrypted               String?
   ssnHash                    String?            @unique
+  prefix                     NamePrefix?
+  suffix                     NameSuffix?
+  gender                     String?
   phone                      String?
   mailingAddress             String?
   identityVerificationStatus VerificationStatus @default(PENDING)
