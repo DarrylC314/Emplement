@@ -34,11 +34,16 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     return apiError('No claimant found for this event yet', 404);
   }
 
-  const updated = await prisma.employmentEvent.update({
-    where: { id: params.id },
+  // Atomic compare-and-swap: guards against a concurrent Match/Dismiss on
+  // the same event racing past the findUnique check above and both writing
+  // — updateMany only touches the row if it's still unresolved.
+  const updated = await prisma.employmentEvent.updateMany({
+    where: { id: params.id, matchedClaimantProfileId: null, dismissedAt: null },
     data: { matchedClaimantProfileId: matchedClaimant.id },
-    select: { id: true },
   });
+  if (updated.count === 0) {
+    return apiError('This event has already been resolved', 409);
+  }
 
   await writeAuditLog({
     actorUserId: session!.user.id,
@@ -48,5 +53,5 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     metadata: { via: 'retry' },
   });
 
-  return Response.json(updated, { status: 200 });
+  return Response.json({ id: params.id }, { status: 200 });
 }
