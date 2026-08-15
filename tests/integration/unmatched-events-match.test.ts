@@ -2,6 +2,7 @@ import { describe, it, expect, beforeAll, afterAll, vi } from 'vitest';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
 import { hashSSN } from '@/lib/ssnHash';
+import { RATE_LIMIT_MAX_ATTEMPTS, resetRateLimits } from '@/lib/rateLimit';
 import { POST as manualMatch } from '@/app/api/staff/unmatched-events/[id]/match/route';
 
 vi.mock('@/lib/auth', () => ({
@@ -109,22 +110,70 @@ describe('POST /api/staff/unmatched-events/[id]/match', () => {
     expect((log?.metadata as { via?: string; note?: string })?.note).toContain('typo');
   });
 
-  it('returns 404 when no claimant matches the submitted SSN', async () => {
+  it('returns 404 when no claimant matches the submitted SSN, and audits the miss without the SSN', async () => {
+    resetRateLimits();
     const req = new Request(`http://localhost/api/staff/unmatched-events/${secondEventId}/match`, {
       method: 'POST',
       body: JSON.stringify({ ssn: '999-99-9999', note: 'Tried a guess based on the employer roster.' }),
     });
     const res = await manualMatch(req, { params: { id: secondEventId } });
     expect(res.status).toBe(404);
+
+    const log = await prisma.auditLog.findFirst({
+      where: {
+        targetEntity: 'EmploymentEvent',
+        targetId: secondEventId,
+        action: 'EMPLOYMENT_EVENT_MATCH_ATTEMPT_FAILED',
+      },
+    });
+    expect(log).not.toBeNull();
+    const metadata = log?.metadata as { note?: string; ssn?: string; ssnHash?: string };
+    expect(metadata?.note).toContain('Tried a guess');
+    expect(metadata?.ssn).toBeUndefined();
+    expect(metadata?.ssnHash).toBeUndefined();
+    expect(JSON.stringify(metadata)).not.toContain('999-99-9999');
   });
 
   it('rejects a request missing the required note with 400', async () => {
+    resetRateLimits();
     const req = new Request(`http://localhost/api/staff/unmatched-events/${secondEventId}/match`, {
       method: 'POST',
       body: JSON.stringify({ ssn: correctSsn }),
     });
     const res = await manualMatch(req, { params: { id: secondEventId } });
     expect(res.status).toBe(400);
+  });
+
+  it('rejects a malformed SSN format with a 400 and field-level errors', async () => {
+    resetRateLimits();
+    const req = new Request(`http://localhost/api/staff/unmatched-events/${secondEventId}/match`, {
+      method: 'POST',
+      body: JSON.stringify({ ssn: '999999999', note: 'No dashes on this one.' }),
+    });
+    const res = await manualMatch(req, { params: { id: secondEventId } });
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.errors?.fieldErrors?.ssn?.[0]).toMatch(/123-45-6789/);
+  });
+
+  it('rate limits repeated match attempts and refuses with 429', async () => {
+    resetRateLimits();
+    const makeRequest = () =>
+      new Request(`http://localhost/api/staff/unmatched-events/${secondEventId}/match`, {
+        method: 'POST',
+        body: JSON.stringify({ ssn: '999-99-9999', note: 'Rate limit probe.' }),
+      });
+
+    for (let attempt = 1; attempt <= RATE_LIMIT_MAX_ATTEMPTS; attempt += 1) {
+      const res = await manualMatch(makeRequest(), { params: { id: secondEventId } });
+      expect(res.status).toBe(404);
+    }
+
+    const blocked = await manualMatch(makeRequest(), { params: { id: secondEventId } });
+    expect(blocked.status).toBe(429);
+    expect((await blocked.json()).error).toMatch(/too many/i);
+
+    resetRateLimits();
   });
 
   it('returns 409 when the event is already matched', async () => {

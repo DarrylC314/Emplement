@@ -118,7 +118,14 @@ export default function StaffDashboardPage() {
                 <p className="text-sm text-text-secondary">
                   {claimant.gender && `Gender: ${claimant.gender}`}
                   {claimant.gender && claimant.dateOfBirth && ' — '}
-                  {claimant.dateOfBirth && `DOB: ${new Date(claimant.dateOfBirth).toLocaleDateString()}`}
+                  {claimant.dateOfBirth &&
+                    // Pinned to UTC specifically for this field: Prisma
+                    // serializes dateOfBirth as UTC midnight, and this
+                    // workflow relies on DOB for claimant disambiguation, so
+                    // it can't render a day early for viewers west of UTC
+                    // the way the app's other (lower-stakes) date displays
+                    // do.
+                    `DOB: ${new Date(claimant.dateOfBirth).toLocaleDateString(undefined, { timeZone: 'UTC' })}`}
                 </p>
               )}
               <Link href={`/staff/claimants/${claimant.id}`} className="text-link underline">

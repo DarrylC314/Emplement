@@ -15,9 +15,12 @@ export async function GET(req: Request) {
   // full User row (passwordHash included) to the browser. Also omits
   // ssnEncrypted (not used by any caller of this route; SSN access goes
   // through the separate audit-logged reveal-ssn endpoint) and other
-  // ClaimantProfile PII the UI doesn't display (dateOfBirth, phone,
-  // mailingAddress). Only returns what src/app/staff/dashboard/page.tsx and
-  // src/app/staff/claimants/[id]/page.tsx actually read.
+  // ClaimantProfile PII the UI doesn't display (phone, mailingAddress).
+  // dateOfBirth IS returned deliberately — the unmatched-events staff
+  // workflow relies on it to disambiguate between similarly-named
+  // claimants when manually matching an event. Only returns what
+  // src/app/staff/dashboard/page.tsx and src/app/staff/claimants/[id]/page.tsx
+  // actually read.
   const claimants = await prisma.claimantProfile.findMany({
     where: {
       OR: [

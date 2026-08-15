@@ -78,12 +78,12 @@ test('caseworker can see an unmatched event, manually match it, and see it on th
   await waitForHydration(page);
   await expect(page.getByText('Unmatched Flow Fixture Claimant').first()).toBeVisible();
 
-  await page.getByRole('button', { name: 'Manual match' }).click();
+  await page.getByRole('button', { name: 'Manual match' }).first().click();
   await page.getByLabel(/Social Security number/i).fill(matchSsn);
   await page.getByLabel(/Match notes/i).fill('Verified with the claimant directly by phone.');
   await page.getByRole('button', { name: 'Confirm match' }).click();
 
-  await expect(page.getByText('No unmatched events on file.')).toBeVisible();
+  await expect(page.getByText('Unmatched Flow Fixture Claimant')).toHaveCount(0);
 
   const updatedEvent = await prisma.employmentEvent.findUnique({ where: { id: eventId } });
   expect(updatedEvent?.matchedClaimantProfileId).toBe(claimantProfileId);
