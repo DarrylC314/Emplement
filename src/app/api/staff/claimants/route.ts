@@ -28,6 +28,10 @@ export async function GET(req: Request) {
     select: {
       id: true,
       legalName: true,
+      prefix: true,
+      suffix: true,
+      gender: true,
+      dateOfBirth: true,
       user: { select: { email: true } },
       claims: {
         select: {
