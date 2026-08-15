@@ -68,6 +68,100 @@ describe('identity verification flow', () => {
     expect(log).not.toBeNull();
   });
 
+  it('stores prefix, suffix, and gender when provided', async () => {
+    const user = await prisma.user.create({
+      data: { email: `idv-identity-fields-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    const profile = await prisma.claimantProfile.create({ data: { userId: user.id } });
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: user.id, role: 'CLAIMANT', claimantProfileId: profile.id, email: user.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    const req = new Request('http://localhost/api/identity-verification/callback', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimantProfileId: profile.id,
+        legalName: 'Alex Rivera',
+        dateOfBirth: '1985-06-20',
+        ssn: '321-54-9876',
+        phone: '5559876543',
+        mailingAddress: '456 Oak Ave, Jefferson City, MO 65101',
+        prefix: 'DR',
+        suffix: 'III',
+        gender: 'Non-binary',
+      }),
+    });
+    const res = await callbackVerification(req);
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.claimantProfile.findUnique({ where: { id: profile.id } });
+    expect(updated?.prefix).toBe('DR');
+    expect(updated?.suffix).toBe('III');
+    expect(updated?.gender).toBe('Non-binary');
+
+    await prisma.auditLog.deleteMany({ where: { targetId: profile.id } });
+    await prisma.identityVerificationAttempt.deleteMany({ where: { claimantId: profile.id } });
+    await prisma.claimantProfile.delete({ where: { id: profile.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+
+    // Restore the original session for any subsequent tests
+    const originalProfile = await prisma.claimantProfile.findUnique({ where: { id: claimantProfileId } });
+    const originalUser = await prisma.user.findUnique({ where: { id: originalProfile!.userId } });
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: originalUser!.id, role: 'CLAIMANT', claimantProfileId: claimantProfileId, email: originalUser!.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+  });
+
+  it('leaves prefix, suffix, and gender null when omitted', async () => {
+    const user = await prisma.user.create({
+      data: { email: `idv-identity-fields-omitted-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    const profile = await prisma.claimantProfile.create({ data: { userId: user.id } });
+
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: user.id, role: 'CLAIMANT', claimantProfileId: profile.id, email: user.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+
+    const req = new Request('http://localhost/api/identity-verification/callback', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimantProfileId: profile.id,
+        legalName: 'Sam Chen',
+        dateOfBirth: '1992-03-11',
+        ssn: '654-32-1098',
+        phone: '5551112222',
+        mailingAddress: '789 Pine St, Jefferson City, MO 65101',
+        prefix: '',
+        suffix: '',
+        gender: '',
+      }),
+    });
+    const res = await callbackVerification(req);
+    expect(res.status).toBe(200);
+
+    const updated = await prisma.claimantProfile.findUnique({ where: { id: profile.id } });
+    expect(updated?.prefix).toBeNull();
+    expect(updated?.suffix).toBeNull();
+    expect(updated?.gender).toBeNull();
+
+    await prisma.auditLog.deleteMany({ where: { targetId: profile.id } });
+    await prisma.identityVerificationAttempt.deleteMany({ where: { claimantId: profile.id } });
+    await prisma.claimantProfile.delete({ where: { id: profile.id } });
+    await prisma.user.delete({ where: { id: user.id } });
+
+    // Restore the original session for any subsequent tests
+    const originalProfile = await prisma.claimantProfile.findUnique({ where: { id: claimantProfileId } });
+    const originalUser = await prisma.user.findUnique({ where: { id: originalProfile!.userId } });
+    vi.mocked(getServerAuthSession).mockResolvedValue({
+      user: { id: originalUser!.id, role: 'CLAIMANT', claimantProfileId: claimantProfileId, email: originalUser!.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+  });
+
   it('rate limits repeated verification starts and refuses with 429', async () => {
     resetRateLimits();
     const makeRequest = () =>
