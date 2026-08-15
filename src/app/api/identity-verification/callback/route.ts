@@ -1,4 +1,4 @@
-import { Prisma } from '@prisma/client';
+import { Prisma, NamePrefix, NameSuffix } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { identityVerificationSchema } from '@/lib/validation/identity';
 import { encryptSSN } from '@/lib/encryption';
@@ -42,20 +42,29 @@ export async function POST(req: Request) {
 
   let profile;
   try {
+    const updateData: Prisma.ClaimantProfileUpdateInput = {
+      legalName: parsed.data.legalName,
+      dateOfBirth: new Date(parsed.data.dateOfBirth),
+      ssnEncrypted: encryptSSN(parsed.data.ssn),
+      ssnHash: hashSSN(parsed.data.ssn),
+      phone: parsed.data.phone,
+      mailingAddress: parsed.data.mailingAddress,
+      identityVerificationStatus: 'VERIFIED',
+    };
+
+    if (parsed.data.prefix !== undefined) {
+      updateData.prefix = parsed.data.prefix as NamePrefix;
+    }
+    if (parsed.data.suffix !== undefined) {
+      updateData.suffix = parsed.data.suffix as NameSuffix;
+    }
+    if (parsed.data.gender !== undefined) {
+      updateData.gender = parsed.data.gender;
+    }
+
     profile = await prisma.claimantProfile.update({
       where: { id: claimantProfileId },
-      data: {
-        legalName: parsed.data.legalName,
-        dateOfBirth: new Date(parsed.data.dateOfBirth),
-        ssnEncrypted: encryptSSN(parsed.data.ssn),
-        ssnHash: hashSSN(parsed.data.ssn),
-        phone: parsed.data.phone,
-        mailingAddress: parsed.data.mailingAddress,
-        prefix: parsed.data.prefix,
-        suffix: parsed.data.suffix,
-        gender: parsed.data.gender,
-        identityVerificationStatus: 'VERIFIED',
-      },
+      data: updateData,
     });
   } catch (err) {
     // ssnHash is @unique. A collision here is not proof of fraud — it just
