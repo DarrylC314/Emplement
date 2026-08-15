@@ -22,6 +22,8 @@ export default function UnmatchedEventsPage() {
   const [matchingId, setMatchingId] = useState<string | null>(null);
   const [ssn, setSsn] = useState('');
   const [matchNote, setMatchNote] = useState('');
+  const [dismissingId, setDismissingId] = useState<string | null>(null);
+  const [dismissNote, setDismissNote] = useState('');
 
   async function loadEvents() {
     setLoadError(null);
@@ -44,6 +46,8 @@ export default function UnmatchedEventsPage() {
     setMatchingId(null);
     setSsn('');
     setMatchNote('');
+    setDismissingId(null);
+    setDismissNote('');
   }
 
   async function handleRetry(id: string) {
@@ -73,6 +77,20 @@ export default function UnmatchedEventsPage() {
           ? 'No claimant found with that SSN.'
           : 'We could not record this match. Please try again.'
       );
+      return;
+    }
+    resolveEvent(id);
+  }
+
+  async function handleDismiss(id: string, e: React.FormEvent) {
+    e.preventDefault();
+    setActionError(null);
+    const res = await fetch(`/api/staff/unmatched-events/${id}/dismiss`, {
+      method: 'POST',
+      body: JSON.stringify({ note: dismissNote }),
+    });
+    if (!res.ok) {
+      setActionError('We could not dismiss this event. Please try again.');
       return;
     }
     resolveEvent(id);
@@ -123,7 +141,7 @@ export default function UnmatchedEventsPage() {
                 {new Date(event.eventDate).toLocaleDateString()}
               </p>
 
-              {matchingId === event.id ? (
+              {matchingId === event.id && (
                 <form onSubmit={(e) => handleMatch(event.id, e)} className="mb-2">
                   <TextField
                     id={`match-ssn-${event.id}`}
@@ -146,11 +164,34 @@ export default function UnmatchedEventsPage() {
                     </Button>
                   </div>
                 </form>
-              ) : (
+              )}
+
+              {dismissingId === event.id && (
+                <form onSubmit={(e) => handleDismiss(event.id, e)} className="mb-2">
+                  <TextField
+                    id={`dismiss-note-${event.id}`}
+                    label="Reason for dismissal (audit-logged)"
+                    value={dismissNote}
+                    onChange={setDismissNote}
+                    required
+                  />
+                  <div className="flex gap-3">
+                    <Button type="submit">Confirm dismissal</Button>
+                    <Button type="button" variant="secondary" onClick={() => setDismissingId(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              )}
+
+              {matchingId !== event.id && dismissingId !== event.id && (
                 <div className="flex gap-3">
                   <Button onClick={() => handleRetry(event.id)}>Retry</Button>
                   <Button variant="secondary" onClick={() => setMatchingId(event.id)}>
                     Manual match
+                  </Button>
+                  <Button variant="secondary" onClick={() => setDismissingId(event.id)}>
+                    Dismiss
                   </Button>
                 </div>
               )}
