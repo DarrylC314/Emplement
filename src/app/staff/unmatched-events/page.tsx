@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
 
 type UnmatchedEvent = {
   id: string;
@@ -18,6 +19,9 @@ export default function UnmatchedEventsPage() {
   const [events, setEvents] = useState<UnmatchedEvent[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [matchingId, setMatchingId] = useState<string | null>(null);
+  const [ssn, setSsn] = useState('');
+  const [matchNote, setMatchNote] = useState('');
 
   async function loadEvents() {
     setLoadError(null);
@@ -35,6 +39,13 @@ export default function UnmatchedEventsPage() {
     }
   }, [status, session]);
 
+  function resolveEvent(id: string) {
+    setEvents((prev) => prev?.filter((e) => e.id !== id) ?? null);
+    setMatchingId(null);
+    setSsn('');
+    setMatchNote('');
+  }
+
   async function handleRetry(id: string) {
     setActionError(null);
     const res = await fetch(`/api/staff/unmatched-events/${id}/retry`, { method: 'POST' });
@@ -46,7 +57,25 @@ export default function UnmatchedEventsPage() {
       );
       return;
     }
-    setEvents((prev) => prev?.filter((e) => e.id !== id) ?? null);
+    resolveEvent(id);
+  }
+
+  async function handleMatch(id: string, e: React.FormEvent) {
+    e.preventDefault();
+    setActionError(null);
+    const res = await fetch(`/api/staff/unmatched-events/${id}/match`, {
+      method: 'POST',
+      body: JSON.stringify({ ssn, note: matchNote }),
+    });
+    if (!res.ok) {
+      setActionError(
+        res.status === 404
+          ? 'No claimant found with that SSN.'
+          : 'We could not record this match. Please try again.'
+      );
+      return;
+    }
+    resolveEvent(id);
   }
 
   if (status === 'loading') {
@@ -93,7 +122,38 @@ export default function UnmatchedEventsPage() {
                 Reported by {event.employer.companyName ?? 'an employer'} — event date{' '}
                 {new Date(event.eventDate).toLocaleDateString()}
               </p>
-              <Button onClick={() => handleRetry(event.id)}>Retry</Button>
+
+              {matchingId === event.id ? (
+                <form onSubmit={(e) => handleMatch(event.id, e)} className="mb-2">
+                  <TextField
+                    id={`match-ssn-${event.id}`}
+                    label="Social Security number (123-45-6789)"
+                    value={ssn}
+                    onChange={setSsn}
+                    required
+                  />
+                  <TextField
+                    id={`match-note-${event.id}`}
+                    label="Match notes (audit-logged)"
+                    value={matchNote}
+                    onChange={setMatchNote}
+                    required
+                  />
+                  <div className="flex gap-3">
+                    <Button type="submit">Confirm match</Button>
+                    <Button type="button" variant="secondary" onClick={() => setMatchingId(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </form>
+              ) : (
+                <div className="flex gap-3">
+                  <Button onClick={() => handleRetry(event.id)}>Retry</Button>
+                  <Button variant="secondary" onClick={() => setMatchingId(event.id)}>
+                    Manual match
+                  </Button>
+                </div>
+              )}
             </li>
           ))}
         </ul>
