@@ -21,9 +21,12 @@ export default function UnmatchedEventsPage() {
   const [actionError, setActionError] = useState<string | null>(null);
   const [matchingId, setMatchingId] = useState<string | null>(null);
   const [ssn, setSsn] = useState('');
+  const [ssnError, setSsnError] = useState<string | undefined>();
   const [matchNote, setMatchNote] = useState('');
+  const [matchNoteError, setMatchNoteError] = useState<string | undefined>();
   const [dismissingId, setDismissingId] = useState<string | null>(null);
   const [dismissNote, setDismissNote] = useState('');
+  const [pendingId, setPendingId] = useState<string | null>(null);
 
   async function loadEvents() {
     setLoadError(null);
@@ -45,55 +48,127 @@ export default function UnmatchedEventsPage() {
     setEvents((prev) => prev?.filter((e) => e.id !== id) ?? null);
     setMatchingId(null);
     setSsn('');
+    setSsnError(undefined);
     setMatchNote('');
+    setMatchNoteError(undefined);
+    setDismissingId(null);
+    setDismissNote('');
+  }
+
+  function openMatch(id: string) {
+    setMatchingId(id);
+    setSsn('');
+    setSsnError(undefined);
+    setMatchNote('');
+    setMatchNoteError(undefined);
+    setActionError(null);
+  }
+
+  function cancelMatch() {
+    setMatchingId(null);
+    setSsn('');
+    setSsnError(undefined);
+    setMatchNote('');
+    setMatchNoteError(undefined);
+  }
+
+  function openDismiss(id: string) {
+    setDismissingId(id);
+    setDismissNote('');
+    setActionError(null);
+  }
+
+  function cancelDismiss() {
     setDismissingId(null);
     setDismissNote('');
   }
 
   async function handleRetry(id: string) {
     setActionError(null);
-    const res = await fetch(`/api/staff/unmatched-events/${id}/retry`, { method: 'POST' });
-    if (!res.ok) {
-      setActionError(
-        res.status === 404
-          ? 'No claimant found for this event yet.'
-          : 'We could not retry this match. Please try again.'
-      );
-      return;
+    setPendingId(id);
+    try {
+      const res = await fetch(`/api/staff/unmatched-events/${id}/retry`, { method: 'POST' });
+      if (!res.ok) {
+        if (res.status === 409) {
+          setActionError('Another staff member already resolved this event.');
+          await loadEvents();
+          return;
+        }
+        setActionError(
+          res.status === 404
+            ? 'No claimant found for this event yet.'
+            : 'We could not retry this match. Please try again.'
+        );
+        return;
+      }
+      resolveEvent(id);
+    } finally {
+      setPendingId(null);
     }
-    resolveEvent(id);
   }
 
   async function handleMatch(id: string, e: React.FormEvent) {
     e.preventDefault();
     setActionError(null);
-    const res = await fetch(`/api/staff/unmatched-events/${id}/match`, {
-      method: 'POST',
-      body: JSON.stringify({ ssn, note: matchNote }),
-    });
-    if (!res.ok) {
-      setActionError(
-        res.status === 404
-          ? 'No claimant found with that SSN.'
-          : 'We could not record this match. Please try again.'
-      );
-      return;
+    setSsnError(undefined);
+    setMatchNoteError(undefined);
+    setPendingId(id);
+    try {
+      const res = await fetch(`/api/staff/unmatched-events/${id}/match`, {
+        method: 'POST',
+        body: JSON.stringify({ ssn, note: matchNote }),
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          setActionError('Another staff member already resolved this event.');
+          await loadEvents();
+          return;
+        }
+        if (res.status === 400) {
+          const body = await res.json().catch(() => null);
+          const fieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
+          if (fieldErrors) {
+            setSsnError(fieldErrors.ssn?.[0]);
+            setMatchNoteError(fieldErrors.note?.[0]);
+            setActionError(fieldErrors.ssn?.[0] ?? fieldErrors.note?.[0] ?? 'We could not record this match. Please try again.');
+            return;
+          }
+        }
+        setActionError(
+          res.status === 404
+            ? 'No claimant found with that SSN.'
+            : 'We could not record this match. Please try again.'
+        );
+        return;
+      }
+      resolveEvent(id);
+    } finally {
+      setPendingId(null);
     }
-    resolveEvent(id);
   }
 
   async function handleDismiss(id: string, e: React.FormEvent) {
     e.preventDefault();
     setActionError(null);
-    const res = await fetch(`/api/staff/unmatched-events/${id}/dismiss`, {
-      method: 'POST',
-      body: JSON.stringify({ note: dismissNote }),
-    });
-    if (!res.ok) {
-      setActionError('We could not dismiss this event. Please try again.');
-      return;
+    setPendingId(id);
+    try {
+      const res = await fetch(`/api/staff/unmatched-events/${id}/dismiss`, {
+        method: 'POST',
+        body: JSON.stringify({ note: dismissNote }),
+      });
+      if (!res.ok) {
+        if (res.status === 409) {
+          setActionError('Another staff member already resolved this event.');
+          await loadEvents();
+          return;
+        }
+        setActionError('We could not dismiss this event. Please try again.');
+        return;
+      }
+      resolveEvent(id);
+    } finally {
+      setPendingId(null);
     }
-    resolveEvent(id);
   }
 
   if (status === 'loading') {
@@ -148,6 +223,7 @@ export default function UnmatchedEventsPage() {
                     label="Social Security number (123-45-6789)"
                     value={ssn}
                     onChange={setSsn}
+                    error={ssnError}
                     required
                   />
                   <TextField
@@ -155,11 +231,14 @@ export default function UnmatchedEventsPage() {
                     label="Match notes (audit-logged)"
                     value={matchNote}
                     onChange={setMatchNote}
+                    error={matchNoteError}
                     required
                   />
                   <div className="flex gap-3">
-                    <Button type="submit">Confirm match</Button>
-                    <Button type="button" variant="secondary" onClick={() => setMatchingId(null)}>
+                    <Button type="submit" disabled={pendingId === event.id}>
+                      Confirm match
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={cancelMatch} disabled={pendingId === event.id}>
                       Cancel
                     </Button>
                   </div>
@@ -176,8 +255,10 @@ export default function UnmatchedEventsPage() {
                     required
                   />
                   <div className="flex gap-3">
-                    <Button type="submit">Confirm dismissal</Button>
-                    <Button type="button" variant="secondary" onClick={() => setDismissingId(null)}>
+                    <Button type="submit" disabled={pendingId === event.id}>
+                      Confirm dismissal
+                    </Button>
+                    <Button type="button" variant="secondary" onClick={cancelDismiss} disabled={pendingId === event.id}>
                       Cancel
                     </Button>
                   </div>
@@ -186,11 +267,13 @@ export default function UnmatchedEventsPage() {
 
               {matchingId !== event.id && dismissingId !== event.id && (
                 <div className="flex gap-3">
-                  <Button onClick={() => handleRetry(event.id)}>Retry</Button>
-                  <Button variant="secondary" onClick={() => setMatchingId(event.id)}>
+                  <Button onClick={() => handleRetry(event.id)} disabled={pendingId === event.id}>
+                    Retry
+                  </Button>
+                  <Button variant="secondary" onClick={() => openMatch(event.id)} disabled={pendingId === event.id}>
                     Manual match
                   </Button>
-                  <Button variant="secondary" onClick={() => setDismissingId(event.id)}>
+                  <Button variant="secondary" onClick={() => openDismiss(event.id)} disabled={pendingId === event.id}>
                     Dismiss
                   </Button>
                 </div>
