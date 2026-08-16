@@ -198,6 +198,58 @@ test('claimant builds a candidate profile, applies, and employer hires them thro
   const message = await prisma.message.findFirst({ where: { claimantId: claimantProfileId } });
   expect(message).not.toBeNull();
 
+  // Interview scheduling is exercised on a second, still-PENDING application
+  // (the one built above is already HIRED) — this proves interview
+  // scheduling is fully independent of Hire/Reject, per this plan's own
+  // constraint.
+  await page.goto('/employer/job-postings');
+  await waitForHydration(page);
+  await page.getByLabel('Title').fill('Second warehouse role');
+  await page.getByLabel('Description').fill('Evening shift');
+  await page.getByLabel('Location').fill('Jefferson City, MO');
+  await page.getByRole('button', { name: 'Post job' }).click();
+  await expect(page.getByText('Second warehouse role').first()).toBeVisible();
+
+  await claimantPage.goto('/claim/browse-postings');
+  await waitForHydration(claimantPage);
+  await claimantPage
+    .locator('li', { has: claimantPage.getByText('Second warehouse role') })
+    .getByRole('button', { name: 'Apply' })
+    .click();
+
+  await page.goto('/employer/job-postings');
+  await waitForHydration(page);
+  // The postings list is ordered createdAt desc, and "Second warehouse role"
+  // was created after "Warehouse associate", so it sorts first (index 0) —
+  // not .nth(1), which would land on the already-HIRED posting instead.
+  await page.getByRole('link', { name: 'View applications' }).first().click();
+  await waitForHydration(page);
+  await page.getByRole('button', { name: 'Propose interview' }).click();
+  await page.getByLabel('Slot 1').fill('2026-09-01T14:00');
+  await page.getByLabel('Slot 2').fill('2026-09-02T10:00');
+  await page.getByLabel('Location or video link (optional)').fill('Video call');
+  await page.getByRole('button', { name: 'Send proposal' }).click();
+  await expect(page.getByText('Interview proposed, waiting for candidate response.')).toBeVisible();
+
+  await claimantPage.goto('/claim/applications');
+  await waitForHydration(claimantPage);
+  await expect(claimantPage.getByText('Second warehouse role').first()).toBeVisible();
+  await expect(claimantPage.getByText('Proposed interview times:')).toBeVisible();
+
+  const myApplicationsResults = await new AxeBuilder({ page: claimantPage })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+    .analyze();
+  expect(myApplicationsResults.violations).toEqual([]);
+
+  await claimantPage.getByRole('button', { name: 'Accept' }).first().click();
+  await expect(claimantPage.getByText(/✓ Interview confirmed/)).toBeVisible();
+
+  await page.goto('/employer/job-postings');
+  await waitForHydration(page);
+  await page.getByRole('link', { name: 'View applications' }).first().click();
+  await waitForHydration(page);
+  await expect(page.getByText(/✓ Interview confirmed/)).toBeVisible();
+
   await claimantPage.close();
 });
 
@@ -219,6 +271,16 @@ test.afterAll(async () => {
   });
 
   if (employerUser?.employerProfile) {
+    // Interview/InterviewSlot rows (introduced by this plan) reference
+    // JobApplication via an FK with no cascade, so they must be cleared
+    // before the jobApplication.deleteMany below or it fails with a
+    // foreign key constraint error.
+    await prisma.interviewSlot.deleteMany({
+      where: { interview: { jobApplication: { jobPosting: { employerId: employerUser.employerProfile.id } } } },
+    });
+    await prisma.interview.deleteMany({
+      where: { jobApplication: { jobPosting: { employerId: employerUser.employerProfile.id } } },
+    });
     await prisma.jobApplication.deleteMany({
       where: { jobPosting: { employerId: employerUser.employerProfile.id } },
     });
