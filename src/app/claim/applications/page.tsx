@@ -121,6 +121,9 @@ export default function MyApplicationsPage() {
               <p className="text-sm text-text-secondary mb-2">
                 {a.jobPosting.employer.companyName ?? 'An employer'}
               </p>
+              <p className="text-sm text-text-secondary mb-2">
+                Applied on {new Date(a.createdAt).toLocaleDateString()}
+              </p>
               {a.status === 'PENDING' && (
                 <p role="status" className="text-sm mb-2">
                   Status: Pending

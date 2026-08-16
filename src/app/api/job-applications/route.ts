@@ -31,6 +31,7 @@ export async function GET() {
       status: true,
       initiatedBy: true,
       createdAt: true,
+      jobPostingId: true,
       jobPosting: { select: { title: true, employer: { select: { companyName: true } } } },
       interview: {
         select: {

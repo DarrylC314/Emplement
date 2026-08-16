@@ -25,9 +25,10 @@ export default function BrowsePostingsPage() {
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
 
   async function loadPostings() {
-    const [postingsRes, profileRes] = await Promise.all([
+    const [postingsRes, profileRes, applicationsRes] = await Promise.all([
       fetch('/api/job-postings'),
       fetch('/api/candidate-profile'),
+      fetch('/api/job-applications'),
     ]);
     if (!postingsRes.ok) {
       setLoadError('We could not load job postings. Please try again.');
@@ -37,6 +38,17 @@ export default function BrowsePostingsPage() {
     if (profileRes.ok) {
       const profile = await profileRes.json();
       setMyTags(profile.tags ?? []);
+    }
+    if (applicationsRes.ok) {
+      // The unique constraint on JobApplication blocks a second application
+      // to the same posting regardless of the first one's status, so any
+      // existing application — not just a pending one — means "Apply" would
+      // just 409. Without this, appliedIds only ever grew from clicks made
+      // during the current page visit, so a returning claimant who'd
+      // already applied in a prior visit saw "Apply" again until they
+      // clicked it and hit that error.
+      const applications: { jobPostingId: string }[] = await applicationsRes.json();
+      setAppliedIds(new Set(applications.map((a) => a.jobPostingId)));
     }
   }
 
