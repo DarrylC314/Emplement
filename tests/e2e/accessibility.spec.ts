@@ -49,6 +49,8 @@ let caseworkerUserId: string;
 let employerUserId: string;
 let employerProfileId: string;
 let claimantProfileId: string;
+let candidateProfileId: string;
+let jobPostingId: string;
 let claimId: string;
 let certificationId: string;
 let verificationReference: string;
@@ -131,6 +133,37 @@ test.beforeAll(async ({ browser }) => {
       caseworkerId: caseworkerUser.id,
       subject: 'Additional information needed',
       body: 'Please confirm your job-search contacts for the week ending 8/15.',
+    },
+  });
+
+  // A posting with a pending applicant, so the propose-interview form (only
+  // reachable by clicking "Propose interview" — never present on a plain
+  // page load) has something to scan too.
+  const jobPosting = await prisma.jobPosting.create({
+    data: {
+      employerId: employerProfileId,
+      title: 'A11y Fixture Posting',
+      description: 'Fixture posting used to scan the propose-interview form.',
+      location: 'Remote',
+    },
+  });
+  jobPostingId = jobPosting.id;
+
+  const candidateProfile = await prisma.candidateProfile.create({
+    data: {
+      claimantProfileId: profile.id,
+      headline: 'A11y Fixture Candidate',
+      skills: 'Testing, accessibility',
+      availability: 'Immediate',
+    },
+  });
+  candidateProfileId = candidateProfile.id;
+
+  await prisma.jobApplication.create({
+    data: {
+      jobPostingId: jobPosting.id,
+      candidateProfileId: candidateProfile.id,
+      initiatedBy: 'CANDIDATE',
     },
   });
 
@@ -302,12 +335,30 @@ test.describe('employer pages', () => {
     await expect(page.getByRole('heading', { name: /browse candidates/i })).toBeVisible();
     await expectNoViolations(page);
   });
+
+  test('the propose-interview form has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto(`/employer/job-postings/${jobPostingId}`);
+    await expect(page.getByText('A11y Fixture Candidate')).toBeVisible();
+    await page.getByRole('button', { name: /propose interview/i }).click();
+    await expect(page.getByLabel('Slot 1')).toBeVisible();
+    await expectNoViolations(page);
+  });
 });
 
 test.afterAll(async () => {
   await prisma.auditLog.deleteMany({
     where: { actorUserId: { in: [claimantUserId, caseworkerUserId, employerUserId] } },
   });
+  // Neither Interview nor InterviewSlot cascade-delete, and both must go
+  // before the JobApplication/CandidateProfile/JobPosting rows they FK to —
+  // same ordering convention as tests/e2e/employer-marketplace-flow.spec.ts.
+  await prisma.interviewSlot.deleteMany({ where: { interview: { jobApplication: { jobPostingId } } } });
+  await prisma.interview.deleteMany({ where: { jobApplication: { jobPostingId } } });
+  await prisma.jobApplication.deleteMany({ where: { jobPostingId } });
+  await prisma.candidateProfile.deleteMany({ where: { id: candidateProfileId } });
+  await prisma.jobPosting.deleteMany({ where: { id: jobPostingId } });
   await prisma.employmentEvent.deleteMany({ where: { employerId: employerProfileId } });
   await prisma.employerProfile.deleteMany({ where: { id: employerProfileId } });
   await prisma.user.deleteMany({ where: { id: employerUserId } });

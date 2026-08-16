@@ -96,6 +96,30 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
     }
   }
 
+  function openProposeForm(applicationId: string) {
+    // Slot/location/error state is shared across rows rather than keyed per
+    // application — reset it on open so a form opened for one applicant
+    // doesn't show values still left over from a different applicant's
+    // in-progress (then abandoned or submitted) proposal.
+    setProposingId(applicationId);
+    setSlot1('');
+    setSlot2('');
+    setSlot3('');
+    setInterviewLocation('');
+    setProposeError(null);
+    setProposeFieldErrors({});
+  }
+
+  function closeProposeForm() {
+    setProposingId(null);
+    setSlot1('');
+    setSlot2('');
+    setSlot3('');
+    setInterviewLocation('');
+    setProposeError(null);
+    setProposeFieldErrors({});
+  }
+
   async function handlePropose(applicationId: string, e: React.FormEvent) {
     e.preventDefault();
     setProposeError(null);
@@ -122,11 +146,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
         setProposeError(body?.error ?? 'We could not propose interview times. Please try again.');
         return;
       }
-      setProposingId(null);
-      setSlot1('');
-      setSlot2('');
-      setSlot3('');
-      setInterviewLocation('');
+      closeProposeForm();
       await loadApplications();
     } finally {
       setPendingId(null);
@@ -198,7 +218,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
               )}
 
               {a.status === 'PENDING' && (!a.interview || a.interview.status === 'DECLINED') && proposingId !== a.id && (
-                <Button variant="secondary" onClick={() => setProposingId(a.id)}>
+                <Button variant="secondary" onClick={() => openProposeForm(a.id)}>
                   {a.interview?.status === 'DECLINED' ? 'Propose new interview times' : 'Propose interview'}
                 </Button>
               )}
@@ -247,7 +267,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
                       <Button type="submit" disabled={pendingId === a.id}>
                         Send proposal
                       </Button>
-                      <Button type="button" variant="secondary" onClick={() => setProposingId(null)}>
+                      <Button type="button" variant="secondary" onClick={closeProposeForm}>
                         Cancel
                       </Button>
                     </div>
@@ -257,6 +277,11 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
               {a.interview?.status === 'PROPOSED' && (
                 <p role="status" className="text-sm text-text-secondary mt-2">
                   Interview proposed, waiting for candidate response.
+                </p>
+              )}
+              {a.interview?.status === 'DECLINED' && proposingId !== a.id && (
+                <p role="status" className="text-sm text-text-secondary mt-2">
+                  Candidate declined the proposed interview times.
                 </p>
               )}
               {a.interview?.status === 'CONFIRMED' && (
