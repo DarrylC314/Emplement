@@ -12,6 +12,7 @@ const CLAIMANT_LINKS: NavLink[] = [
   { href: '/claim/verify-identity', label: 'Verify your identity' },
   { href: '/claim/messages', label: 'Messages' },
   { href: '/claim/candidate-profile', label: 'Candidate profile' },
+  { href: '/claim/browse-postings', label: 'Job postings' },
 ];
 
 const STAFF_LINKS: NavLink[] = [
