@@ -3,6 +3,8 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
+import { scoreByTagOverlap } from '@/lib/ranking';
+import type { TagCategoryValue } from '@/lib/tagOptions';
 
 type Candidate = {
   id: string;
@@ -10,12 +12,14 @@ type Candidate = {
   skills: string;
   bio: string | null;
   availability: string;
+  tags: TagCategoryValue[];
 };
 
 type JobPosting = {
   id: string;
   title: string;
   status: 'OPEN' | 'FILLED';
+  tags: TagCategoryValue[];
 };
 
 export default function BrowseCandidatesPage() {
@@ -23,6 +27,7 @@ export default function BrowseCandidatesPage() {
   const [candidates, setCandidates] = useState<Candidate[] | null>(null);
   const [postings, setPostings] = useState<JobPosting[] | null>(null);
   const [selectedPostingId, setSelectedPostingId] = useState<Record<string, string>>({});
+  const [recommendPostingId, setRecommendPostingId] = useState<string>('');
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [reachedOutIds, setReachedOutIds] = useState<Set<string>>(new Set());
@@ -37,7 +42,11 @@ export default function BrowseCandidatesPage() {
       return;
     }
     setCandidates(await candidatesRes.json());
-    setPostings((await postingsRes.json()).filter((p: JobPosting) => p.status === 'OPEN'));
+    const openPostings = (await postingsRes.json()).filter((p: JobPosting) => p.status === 'OPEN');
+    setPostings(openPostings);
+    if (openPostings.length === 1) {
+      setRecommendPostingId(openPostings[0].id);
+    }
   }
 
   useEffect(() => {
@@ -83,6 +92,52 @@ export default function BrowseCandidatesPage() {
     );
   }
 
+  const selectedRecommendPosting = postings?.find((p) => p.id === recommendPostingId) ?? null;
+  const recommended =
+    candidates && selectedRecommendPosting
+      ? scoreByTagOverlap(selectedRecommendPosting.tags, candidates)
+      : [];
+
+  function renderCandidate(c: Candidate) {
+    return (
+      <li key={c.id} className="border border-border rounded p-4">
+        <p className="font-medium">{c.headline}</p>
+        <p className="text-sm text-text-secondary mb-1">Skills: {c.skills}</p>
+        <p className="text-sm text-text-secondary mb-2">Availability: {c.availability}</p>
+        {c.bio && <p className="text-sm mb-2">{c.bio}</p>}
+        {reachedOutIds.has(c.id) ? (
+          <p role="status" className="text-status-active-text font-medium">
+            ✓ Reached out
+          </p>
+        ) : postings !== null && postings.length > 0 ? (
+          <div className="flex items-end gap-3">
+            <div className="mb-4">
+              <label htmlFor={`posting-${c.id}`} className="block font-medium text-text-primary mb-1">
+                For which posting?
+              </label>
+              <select
+                id={`posting-${c.id}`}
+                value={selectedPostingId[c.id] ?? ''}
+                onChange={(e) =>
+                  setSelectedPostingId((prev) => ({ ...prev, [c.id]: e.target.value }))
+                }
+                className="w-full rounded border border-border px-3 py-2"
+              >
+                <option value="">Select a posting</option>
+                {postings.map((p) => (
+                  <option key={p.id} value={p.id}>
+                    {p.title}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <Button onClick={() => handleReachOut(c.id)}>Reach out</Button>
+          </div>
+        ) : null}
+      </li>
+    );
+  }
+
   return (
     <main id="main-content" className="max-w-3xl mx-auto p-8">
       <h1 className="text-2xl font-bold mb-4">Browse candidates</h1>
@@ -101,50 +156,41 @@ export default function BrowseCandidatesPage() {
           You need at least one open job posting before you can reach out to a candidate.
         </p>
       )}
+
+      {postings !== null && postings.length > 0 && (
+        <div className="mb-6">
+          <label htmlFor="recommend-posting" className="block font-medium text-text-primary mb-1">
+            Show recommendations for
+          </label>
+          <select
+            id="recommend-posting"
+            value={recommendPostingId}
+            onChange={(e) => setRecommendPostingId(e.target.value)}
+            className="w-full max-w-sm rounded border border-border px-3 py-2"
+          >
+            <option value="">Select a posting</option>
+            {postings.map((p) => (
+              <option key={p.id} value={p.id}>
+                {p.title}
+              </option>
+            ))}
+          </select>
+        </div>
+      )}
+
+      {recommended.length > 0 && selectedRecommendPosting && (
+        <section className="mb-8">
+          <h2 className="text-xl font-bold mb-4">Recommended for {selectedRecommendPosting.title}</h2>
+          <ul className="space-y-4">{recommended.map(renderCandidate)}</ul>
+        </section>
+      )}
+
       {candidates === null && !loadError && <p>Loading…</p>}
       {candidates !== null && candidates.length === 0 && (
         <p className="text-sm text-text-secondary">No candidates on the marketplace yet.</p>
       )}
       {candidates !== null && candidates.length > 0 && (
-        <ul className="space-y-4">
-          {candidates.map((c) => (
-            <li key={c.id} className="border border-border rounded p-4">
-              <p className="font-medium">{c.headline}</p>
-              <p className="text-sm text-text-secondary mb-1">Skills: {c.skills}</p>
-              <p className="text-sm text-text-secondary mb-2">Availability: {c.availability}</p>
-              {c.bio && <p className="text-sm mb-2">{c.bio}</p>}
-              {reachedOutIds.has(c.id) ? (
-                <p role="status" className="text-status-active-text font-medium">
-                  ✓ Reached out
-                </p>
-              ) : postings !== null && postings.length > 0 ? (
-                <div className="flex items-end gap-3">
-                  <div className="mb-4">
-                    <label htmlFor={`posting-${c.id}`} className="block font-medium text-text-primary mb-1">
-                      For which posting?
-                    </label>
-                    <select
-                      id={`posting-${c.id}`}
-                      value={selectedPostingId[c.id] ?? ''}
-                      onChange={(e) =>
-                        setSelectedPostingId((prev) => ({ ...prev, [c.id]: e.target.value }))
-                      }
-                      className="w-full rounded border border-border px-3 py-2"
-                    >
-                      <option value="">Select a posting</option>
-                      {postings.map((p) => (
-                        <option key={p.id} value={p.id}>
-                          {p.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-                  <Button onClick={() => handleReachOut(c.id)}>Reach out</Button>
-                </div>
-              ) : null}
-            </li>
-          ))}
-        </ul>
+        <ul className="space-y-4">{candidates.map(renderCandidate)}</ul>
       )}
     </main>
   );
