@@ -250,6 +250,41 @@ test('claimant builds a candidate profile, applies, and employer hires them thro
   await waitForHydration(page);
   await expect(page.getByText(/✓ Interview confirmed/)).toBeVisible();
 
+  // Certify a week using both marketplace applications built above as
+  // prefilled job-search contacts, plus one manually-typed entry to reach
+  // the 3-contact minimum.
+  const today = new Date().toISOString().slice(0, 10);
+  await claimantPage.goto(`/claim/certify?claimId=${claimId}`);
+  await waitForHydration(claimantPage);
+  await claimantPage.getByLabel('Week ending date').fill(today);
+  await claimantPage.getByLabel('Week ending date').blur();
+
+  await expect(claimantPage.getByText('Prefilled from your marketplace application').first()).toBeVisible();
+  await expect(claimantPage.getByText('Warehouse associate')).toBeVisible();
+  await expect(claimantPage.getByText('Second warehouse role')).toBeVisible();
+
+  // The form started with one empty manual row; prefill leaves manual rows
+  // untouched, so it's still present as the third row, ready to fill in —
+  // no need to click "Add another job search activity".
+  await claimantPage.locator('#employer-2').fill('Acme Corp');
+  await claimantPage.locator('#method-2').fill('Online application');
+  await claimantPage.locator('#date-2').fill(today);
+  await claimantPage.locator('#position-2').fill('Machinist');
+
+  const certifyResults = await new AxeBuilder({ page: claimantPage })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+    .analyze();
+  expect(certifyResults.violations).toEqual([]);
+
+  await claimantPage.getByRole('button', { name: 'Submit certification' }).click();
+  await expect(claimantPage).toHaveURL(/\/claim\/dashboard/);
+
+  const certification = await prisma.weeklyCertification.findFirst({
+    where: { claimId },
+    orderBy: { submittedAt: 'desc' },
+  });
+  expect(certification?.autoDecision).toBe('APPROVED');
+
   await claimantPage.close();
 });
 
@@ -294,6 +329,10 @@ test.afterAll(async () => {
     const profileId = claimantUser.claimantProfile.id;
     await prisma.message.deleteMany({ where: { claimantId: profileId } });
     await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: profileId } });
+    await prisma.jobSearchActivity.deleteMany({
+      where: { weeklyCertification: { claim: { claimantId: profileId } } },
+    });
+    await prisma.weeklyCertification.deleteMany({ where: { claim: { claimantId: profileId } } });
     await prisma.claim.deleteMany({ where: { claimantId: profileId } });
     await prisma.identityVerificationAttempt.deleteMany({ where: { claimantId: profileId } });
     await prisma.claimantProfile.delete({ where: { id: profileId } });
