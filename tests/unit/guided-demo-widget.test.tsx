@@ -149,4 +149,70 @@ describe('GuidedDemoWidget', () => {
       expect(screen.getByRole('button', { name: /Next: switch to the employer/i })).toBeEnabled()
     );
   });
+
+  it('never paints the primary button as enabled on the commit that first shows step content', async () => {
+    // A plain post-render assertion can't catch this: @testing-library's
+    // render() flushes React's passive effects synchronously (via act()),
+    // so by the time render() returns, the fetch effect's own
+    // setLinksLoading(true) call has already run regardless of the
+    // useState default — collapsing the real gap this bug lived in
+    // (passive effects commit after paint, so a real browser can render
+    // one frame with the button enabled before the effect corrects it).
+    //
+    // Instead, watch the actual sequence of DOM mutations to the button's
+    // `disabled` attribute via MutationObserver, which records each
+    // synchronous mutation in the order it happened even though delivery
+    // is batched. If linksLoading ever defaulted to false, the button's
+    // *first* observed transition would be FROM enabled (attribute absent,
+    // recorded oldValue === null) — exactly the bug this test guards
+    // against.
+    mockLinksFetch();
+    sessionStorage.setItem('emplement-guided-demo-step', '1');
+
+    const records: MutationRecord[] = [];
+    const observer = new MutationObserver((mutations) => records.push(...mutations));
+    observer.observe(document.body, {
+      attributes: true,
+      attributeFilter: ['disabled'],
+      subtree: true,
+      attributeOldValue: true,
+    });
+
+    render(<GuidedDemoWidget />);
+    await screen.findByText('Accept a proposed interview time');
+    observer.disconnect();
+
+    const primaryButtonMutations = records.filter((r) =>
+      /Next: switch to the employer|Loading/i.test((r.target as HTMLElement).textContent ?? '')
+    );
+    const everStartedEnabled = primaryButtonMutations.some((r) => r.oldValue === null);
+    expect(everStartedEnabled).toBe(false);
+  });
+
+  it('exiting the demo while the scenario-links fetch is still in flight does not warn or throw', async () => {
+    const consoleErrorSpy = vi.spyOn(console, 'error').mockImplementation(() => {});
+    let resolveFetch!: (value: Response) => void;
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.mocked(fetch).mockReturnValue(fetchPromise);
+    sessionStorage.setItem('emplement-guided-demo-step', '1');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('Accept a proposed interview time');
+
+    fireEvent.click(screen.getByRole('button', { name: /exit demo/i }));
+    expect(sessionStorage.getItem('emplement-guided-demo-step')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('Accept a proposed interview time')).not.toBeInTheDocument());
+
+    // Resolve the in-flight fetch after the exit — with the cancelled flag
+    // removed, its .then/.finally handlers now run for real. This must not
+    // throw or produce a React "state update" warning.
+    resolveFetch({ ok: true, json: async () => links } as Response);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(1));
+    // Give the resolved fetch's .then/.finally chain a turn to run.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    expect(consoleErrorSpy).not.toHaveBeenCalled();
+    consoleErrorSpy.mockRestore();
+  });
 });

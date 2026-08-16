@@ -13,7 +13,7 @@ export function GuidedDemoWidget() {
   const [stepNumber, setStepNumber] = useState<number | null>(null);
   const [links, setLinks] = useState<ScenarioLinks | null>(null);
   const [linksError, setLinksError] = useState(false);
-  const [linksLoading, setLinksLoading] = useState(false);
+  const [linksLoading, setLinksLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
@@ -28,12 +28,15 @@ export function GuidedDemoWidget() {
   // progress, and cache the result for the rest of the session — not on
   // every step transition. This effect still depends on [stepNumber] so it
   // fires promptly once a demo starts, but linksRequestedRef guards it so
-  // the request itself only ever goes out once.
+  // the request itself only ever goes out once. Because at most one fetch
+  // ever fires per component instance, there's nothing for a "cancelled"
+  // flag to protect against — even if stepNumber changes (e.g. exiting the
+  // demo) while the fetch is in flight, letting it land is harmless since
+  // linksRequestedRef prevents any second request from ever being made.
   useEffect(() => {
     if (stepNumber === null) return;
     if (linksRequestedRef.current) return;
     linksRequestedRef.current = true;
-    let cancelled = false;
     setLinksLoading(true);
     fetch('/api/demo/scenario-links')
       .then((res) => {
@@ -41,17 +44,14 @@ export function GuidedDemoWidget() {
         return res.json();
       })
       .then((data: ScenarioLinks) => {
-        if (!cancelled) setLinks(data);
+        setLinks(data);
       })
       .catch(() => {
-        if (!cancelled) setLinksError(true);
+        setLinksError(true);
       })
       .finally(() => {
-        if (!cancelled) setLinksLoading(false);
+        setLinksLoading(false);
       });
-    return () => {
-      cancelled = true;
-    };
   }, [stepNumber]);
 
   if (stepNumber === null) return null;
