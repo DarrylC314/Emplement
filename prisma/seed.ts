@@ -2,6 +2,7 @@
 import bcrypt from 'bcryptjs';
 import { prisma } from '../src/lib/prisma';
 import { evaluateCertification } from '../src/lib/decisionEngine';
+import { hashSSN } from '../src/lib/ssnHash';
 
 async function main() {
   const caseworkerPasswordHash = await bcrypt.hash('CaseworkerPass123', 12);
@@ -141,8 +142,124 @@ async function main() {
     });
   }
 
+  // Employer marketplace demo data — gives the "one-click demo" a real
+  // employer, real postings, and an applicant already waiting so the whole
+  // apply -> review -> hire -> claim-status story is visible on first login,
+  // not just after manually clicking through an empty marketplace.
+  const employerPasswordHash = await bcrypt.hash('EmployerPass123', 12);
+  const employerUser = await prisma.user.upsert({
+    where: { email: 'employer@example.com' },
+    update: {},
+    create: {
+      email: 'employer@example.com',
+      passwordHash: employerPasswordHash,
+      role: 'EMPLOYER',
+    },
+  });
+  const employerProfile = await prisma.employerProfile.upsert({
+    where: { userId: employerUser.id },
+    update: {},
+    create: {
+      userId: employerUser.id,
+      fein: '47-1002233',
+      companyName: 'Riverbend Logistics Inc.',
+      verificationStatus: 'VERIFIED',
+    },
+  });
+
+  const postingSeeds = [
+    {
+      title: 'Warehouse Associate',
+      description: 'Day shift, full time. Forklift certification a plus.',
+      location: 'Jefferson City, MO',
+      tags: ['TRANSPORTATION_MATERIAL_MOVING', 'PRODUCTION_MANUFACTURING'] as const,
+    },
+    {
+      title: 'Customer Service Representative',
+      description: 'Inbound support for logistics customers, full time.',
+      location: 'Columbia, MO',
+      tags: ['OFFICE_ADMINISTRATIVE', 'SALES'] as const,
+    },
+    {
+      title: 'Certified Nursing Assistant',
+      description: 'Skilled nursing facility, evening shift.',
+      location: 'Springfield, MO',
+      tags: ['HEALTHCARE_SUPPORT'] as const,
+    },
+  ];
+  const postings = [];
+  for (const seed of postingSeeds) {
+    const existing = await prisma.jobPosting.findFirst({
+      where: { employerId: employerProfile.id, title: seed.title },
+    });
+    const posting =
+      existing ??
+      (await prisma.jobPosting.create({
+        data: {
+          employerId: employerProfile.id,
+          title: seed.title,
+          description: seed.description,
+          location: seed.location,
+          tags: [...seed.tags],
+        },
+      }));
+    postings.push(posting);
+  }
+
+  // Give the seeded claimant a candidate profile tagged to match the first
+  // posting, so "Recommended for you" has something to show immediately.
+  const candidateProfile = await prisma.candidateProfile.upsert({
+    where: { claimantProfileId: profile.id },
+    update: {},
+    create: {
+      claimantProfileId: profile.id,
+      headline: 'Warehouse & Logistics Associate',
+      skills: 'Forklift certified, inventory management, RF scanner experience',
+      availability: 'Immediate',
+      tags: ['TRANSPORTATION_MATERIAL_MOVING'],
+    },
+  });
+
+  // The claimant has already applied to the first posting, so logging in as
+  // the seeded employer immediately shows a real applicant to review and
+  // hire — the "Hire" click during the demo is what visibly updates the
+  // claimant's claim status, not something buried behind an empty list.
+  const warehousePosting = postings[0]!;
+  const existingApplication = await prisma.jobApplication.findFirst({
+    where: { jobPostingId: warehousePosting.id, candidateProfileId: candidateProfile.id },
+  });
+  if (!existingApplication) {
+    await prisma.jobApplication.create({
+      data: {
+        jobPostingId: warehousePosting.id,
+        candidateProfileId: candidateProfile.id,
+        initiatedBy: 'CANDIDATE',
+      },
+    });
+  }
+
+  // An unmatched employer-reported hire event, so the staff unmatched-events
+  // queue (/staff/unmatched-events) has something to demonstrate too — a
+  // marketplace hire always arrives already matched by design, so only a
+  // manually-reported event with no corresponding claimant shows up here.
+  const existingUnmatchedEvent = await prisma.employmentEvent.findFirst({
+    where: { employerId: employerProfile.id, employeeName: 'Pat Reyes' },
+  });
+  if (!existingUnmatchedEvent) {
+    await prisma.employmentEvent.create({
+      data: {
+        employerId: employerProfile.id,
+        type: 'HIRE',
+        employeeName: 'Pat Reyes',
+        ssnHash: hashSSN('999-99-9999'),
+        eventDate: new Date('2026-08-10'),
+      },
+    });
+  }
+
   console.log('Seed complete: caseworker@example.com / CaseworkerPass123');
   console.log('Seed complete: claimant@example.com / ClaimantPass123 (has a flagged certification)');
+  console.log('Seed complete: employer@example.com / EmployerPass123 (has 3 postings and 1 applicant waiting)');
 }
 
 main()
