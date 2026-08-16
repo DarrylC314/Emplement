@@ -51,10 +51,12 @@ describe('CertifyPage marketplace prefill', () => {
 
     expect(await screen.findByText('Riverbend Logistics Inc.')).toBeInTheDocument();
     expect(screen.getByText('Warehouse Associate')).toBeInTheDocument();
-    expect(screen.getByText(/prefilled from your marketplace application/i)).toBeInTheDocument();
+    expect(screen.getByText('Prefilled from your marketplace application')).toBeInTheDocument();
     // A prefilled row is read-only display, not an editable field — the only
     // "Employer name" input left is the form's own seeded manual row.
     expect(screen.getAllByLabelText(/employer name/i)).toHaveLength(1);
+    // One summary announcement, not one per row.
+    expect(screen.getByText('1 job search activity was prefilled from your marketplace applications.')).toBeInTheDocument();
   });
 
   it('preserves an in-progress manual row when a prefill sync runs', async () => {
@@ -83,6 +85,9 @@ describe('CertifyPage marketplace prefill', () => {
 
     fireEvent.click(screen.getAllByRole('button', { name: /remove/i })[0]!);
     expect(screen.queryByText('Riverbend Logistics Inc.')).not.toBeInTheDocument();
+    expect(screen.getByText('Job search activity removed.')).toBeInTheDocument();
+    // Focus lands somewhere still on the page, not lost to <body>.
+    expect(document.activeElement).toHaveAttribute('id', 'add-activity-button');
 
     // Re-blurring the unchanged date field must not bring the removed row back.
     fireEvent.blur(dateField);

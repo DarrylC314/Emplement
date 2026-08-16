@@ -9,6 +9,7 @@ import { ErrorSummary } from '@/components/ui/ErrorSummary';
 import { filterApplicationsInWeek, type MarketplaceApplication } from '@/lib/certificationPrefill';
 
 type JobSearchEntry = {
+  id: string;
   employerName: string;
   contactMethod: string;
   contactDate: string;
@@ -41,9 +42,17 @@ function CertifyForm() {
   const [earnings, setEarnings] = useState('0');
   const [refusedWork, setRefusedWork] = useState('no');
   const [activities, setActivities] = useState<JobSearchEntry[]>([
-    { employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
+    { id: 'manual-seed', employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
   ]);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
+  // A stable, client-generated id per manual row (marketplace rows already
+  // have one: the underlying applicationId). Used only as the React `key` —
+  // fixes DOM-identity migration when prefill/remove reorders or resizes the
+  // array, so a field a user is focused in doesn't silently start holding a
+  // different logical row's data. Input `id`s stay positional (`employer-0`,
+  // `employer-1`, ...) since existing E2E tests select on that convention.
+  const manualIdCounter = useRef(0);
+  const [announcement, setAnnouncement] = useState('');
   // `weekEndingDate:applicationId` pairs the claimant has explicitly removed,
   // so a later blur of the (unchanged) week-ending date doesn't silently
   // resurrect a row they just deleted. Scoped per-date because week-ending
@@ -63,18 +72,32 @@ function CertifyForm() {
   }
 
   function addActivity() {
+    manualIdCounter.current += 1;
     setActivities([
       ...activities,
-      { employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
+      {
+        id: `manual-${manualIdCounter.current}`,
+        employerName: '',
+        contactMethod: '',
+        contactDate: '',
+        position: '',
+        source: 'manual',
+      },
     ]);
   }
 
   function removeActivity(index: number) {
     const removed = activities[index];
-    if (removed?.source === 'marketplace' && removed.applicationId) {
+    if (!removed) return;
+    if (removed.source === 'marketplace' && removed.applicationId) {
       removedApplicationIdsRef.current.add(`${weekEndingDate}:${removed.applicationId}`);
     }
     setActivities(activities.filter((_, i) => i !== index));
+    setAnnouncement('Job search activity removed.');
+    // The removed row's own Remove button no longer exists, so the browser
+    // drops focus to <body> unless something else claims it — send it
+    // somewhere still on the page rather than losing it.
+    document.getElementById('add-activity-button')?.focus();
   }
 
   async function handleWeekEndingDateBlur() {
@@ -87,13 +110,23 @@ function CertifyForm() {
       (a) => !removedApplicationIdsRef.current.has(`${dateAtBlur}:${a.id}`)
     );
     const prefilled: JobSearchEntry[] = matches.map((a) => ({
+      id: a.id,
       employerName: a.jobPosting.employer.companyName ?? 'An employer',
       contactMethod: 'Applied through Emplement marketplace',
+      // Displayed via toLocaleDateString() below to match this app's
+      // local-time date convention elsewhere; this stored value (used for
+      // the submitted contactDate) stays a UTC-sliced ISO date, matching
+      // filterApplicationsInWeek's own UTC window arithmetic.
       contactDate: a.createdAt.slice(0, 10),
       position: a.jobPosting.title,
       source: 'marketplace',
       applicationId: a.id,
     }));
+    if (prefilled.length > 0) {
+      setAnnouncement(
+        `${prefilled.length} job search ${prefilled.length === 1 ? 'activity was' : 'activities were'} prefilled from your marketplace applications.`
+      );
+    }
     setActivities((prev) => [...prefilled, ...prev.filter((a) => a.source === 'manual')]);
   }
 
@@ -159,6 +192,13 @@ function CertifyForm() {
 
         <fieldset className="mb-4">
           <legend className="font-medium mb-2">Job search activities (minimum 3 required)</legend>
+          {/* Single shared live region for prefill/removal announcements,
+              rather than one role="status" per row — with several rows
+              prefilled at once, per-row regions each announce redundantly
+              instead of conveying one useful summary. */}
+          <div aria-live="polite" className="sr-only">
+            {announcement}
+          </div>
           {activities.map((a, i) => (
             // Nested fieldset per entry, not just a styled <div>: with two or
             // more activities, every entry's fields share the exact same
@@ -169,7 +209,13 @@ function CertifyForm() {
             // context back — most screen readers announce the nearest
             // enclosing legend alongside the field's own label — the same
             // technique already used for the Yes/No question groups above.
-            <fieldset key={i} className="border border-border rounded p-4 mb-3">
+            //
+            // key={a.id} (not the array index): prefill/remove can reorder
+            // or resize this array, and an index key would let React reuse
+            // a DOM node — and any focus in it — for a different logical
+            // row. a.id is stable per entry (the applicationId for
+            // marketplace rows, a generated id for manual ones).
+            <fieldset key={a.id} className="border border-border rounded p-4 mb-3">
               <legend className="sr-only">Job search activity {i + 1}</legend>
               {a.source === 'marketplace' ? (
                 <div className="mb-3 text-sm">
@@ -180,12 +226,13 @@ function CertifyForm() {
                     <span className="font-medium">Contact method:</span> {a.contactMethod}
                   </p>
                   <p>
-                    <span className="font-medium">Contact date:</span> {a.contactDate}
+                    <span className="font-medium">Contact date:</span>{' '}
+                    {new Date(`${a.contactDate}T00:00:00Z`).toLocaleDateString()}
                   </p>
                   <p>
                     <span className="font-medium">Position:</span> {a.position}
                   </p>
-                  <p role="status" className="text-status-active-text font-medium mt-1">
+                  <p className="text-status-active-text font-medium mt-1">
                     Prefilled from your marketplace application
                   </p>
                 </div>
@@ -202,7 +249,7 @@ function CertifyForm() {
               </Button>
             </fieldset>
           ))}
-          <Button type="button" variant="secondary" onClick={addActivity}>
+          <Button type="button" variant="secondary" onClick={addActivity} id="add-activity-button">
             Add another job search activity
           </Button>
         </fieldset>
