@@ -8,6 +8,7 @@ type TextFieldProps = {
   type?: string;
   value: string;
   onChange: (value: string) => void;
+  onBlur?: () => void;
   error?: string;
   required?: boolean;
   autoComplete?: string;
@@ -19,6 +20,7 @@ export function TextField({
   type = 'text',
   value,
   onChange,
+  onBlur,
   error,
   required,
   autoComplete,
@@ -37,6 +39,7 @@ export function TextField({
         required={required}
         autoComplete={autoComplete}
         onChange={(e) => onChange(e.target.value)}
+        onBlur={onBlur}
         aria-invalid={Boolean(error)}
         aria-describedby={error ? errorId : undefined}
         className={`w-full rounded border px-3 py-2 text-text-primary ${

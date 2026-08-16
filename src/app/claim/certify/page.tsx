@@ -6,8 +6,15 @@ import { Fieldset } from '@/components/ui/Fieldset';
 import { TextField } from '@/components/ui/TextField';
 import { Button } from '@/components/ui/Button';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { filterApplicationsInWeek, type MarketplaceApplication } from '@/lib/certificationPrefill';
 
-type JobSearchEntry = { employerName: string; contactMethod: string; contactDate: string; position: string };
+type JobSearchEntry = {
+  employerName: string;
+  contactMethod: string;
+  contactDate: string;
+  position: string;
+  source: 'marketplace' | 'manual';
+};
 
 const YES_NO = [
   { value: 'yes', label: 'Yes' },
@@ -33,7 +40,7 @@ function CertifyForm() {
   const [earnings, setEarnings] = useState('0');
   const [refusedWork, setRefusedWork] = useState('no');
   const [activities, setActivities] = useState<JobSearchEntry[]>([
-    { employerName: '', contactMethod: '', contactDate: '', position: '' },
+    { employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
   ]);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
 
@@ -46,7 +53,30 @@ function CertifyForm() {
   }
 
   function addActivity() {
-    setActivities([...activities, { employerName: '', contactMethod: '', contactDate: '', position: '' }]);
+    setActivities([
+      ...activities,
+      { employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
+    ]);
+  }
+
+  function removeActivity(index: number) {
+    setActivities(activities.filter((_, i) => i !== index));
+  }
+
+  async function handleWeekEndingDateBlur() {
+    if (!weekEndingDate || isNaN(Date.parse(weekEndingDate))) return;
+    const res = await fetch('/api/job-applications');
+    if (!res.ok) return;
+    const applications: MarketplaceApplication[] = await res.json();
+    const matches = filterApplicationsInWeek(applications, weekEndingDate);
+    const prefilled: JobSearchEntry[] = matches.map((a) => ({
+      employerName: a.jobPosting.employer.companyName ?? 'An employer',
+      contactMethod: 'Applied through Emplement marketplace',
+      contactDate: a.createdAt.slice(0, 10),
+      position: a.jobPosting.title,
+      source: 'marketplace',
+    }));
+    setActivities([...prefilled, ...activities.filter((a) => a.source === 'manual')]);
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -61,7 +91,12 @@ function CertifyForm() {
         workedThisWeek: workedThisWeek === 'yes',
         earnings: Number(earnings),
         refusedWork: refusedWork === 'yes',
-        jobSearchActivities: activities,
+        jobSearchActivities: activities.map(({ employerName, contactMethod, contactDate, position }) => ({
+          employerName,
+          contactMethod,
+          contactDate,
+          position,
+        })),
       }),
     });
     if (res.ok) {
@@ -76,7 +111,15 @@ function CertifyForm() {
       <h1 className="text-2xl font-bold mb-4">Weekly certification</h1>
       <ErrorSummary errors={errors} />
       <form onSubmit={handleSubmit} noValidate>
-        <TextField id="weekEndingDate" label="Week ending date" type="date" value={weekEndingDate} onChange={setWeekEndingDate} required />
+        <TextField
+          id="weekEndingDate"
+          label="Week ending date"
+          type="date"
+          value={weekEndingDate}
+          onChange={setWeekEndingDate}
+          onBlur={handleWeekEndingDateBlur}
+          required
+        />
         <Fieldset legend="Were you able and available to work this week?" name="ableAndAvailable" options={YES_NO} value={ableAndAvailable} onChange={setAbleAndAvailable} />
         <Fieldset legend="Did you work this week?" name="workedThisWeek" options={YES_NO} value={workedThisWeek} onChange={setWorkedThisWeek} />
         <TextField id="earnings" label="Total earnings this week ($)" type="number" value={earnings} onChange={setEarnings} />
@@ -96,10 +139,35 @@ function CertifyForm() {
             // technique already used for the Yes/No question groups above.
             <fieldset key={i} className="border border-border rounded p-4 mb-3">
               <legend className="sr-only">Job search activity {i + 1}</legend>
-              <TextField id={`employer-${i}`} label="Employer name" value={a.employerName} onChange={(v) => updateActivity(i, 'employerName', v)} required />
-              <TextField id={`method-${i}`} label="Contact method" value={a.contactMethod} onChange={(v) => updateActivity(i, 'contactMethod', v)} required />
-              <TextField id={`date-${i}`} label="Contact date" type="date" value={a.contactDate} onChange={(v) => updateActivity(i, 'contactDate', v)} required />
-              <TextField id={`position-${i}`} label="Position applied for" value={a.position} onChange={(v) => updateActivity(i, 'position', v)} required />
+              {a.source === 'marketplace' ? (
+                <div className="mb-3 text-sm">
+                  <p>
+                    <span className="font-medium">Employer:</span> {a.employerName}
+                  </p>
+                  <p>
+                    <span className="font-medium">Contact method:</span> {a.contactMethod}
+                  </p>
+                  <p>
+                    <span className="font-medium">Contact date:</span> {a.contactDate}
+                  </p>
+                  <p>
+                    <span className="font-medium">Position:</span> {a.position}
+                  </p>
+                  <p role="status" className="text-status-active-text font-medium mt-1">
+                    Prefilled from your marketplace application
+                  </p>
+                </div>
+              ) : (
+                <>
+                  <TextField id={`employer-${i}`} label="Employer name" value={a.employerName} onChange={(v) => updateActivity(i, 'employerName', v)} required />
+                  <TextField id={`method-${i}`} label="Contact method" value={a.contactMethod} onChange={(v) => updateActivity(i, 'contactMethod', v)} required />
+                  <TextField id={`date-${i}`} label="Contact date" type="date" value={a.contactDate} onChange={(v) => updateActivity(i, 'contactDate', v)} required />
+                  <TextField id={`position-${i}`} label="Position applied for" value={a.position} onChange={(v) => updateActivity(i, 'position', v)} required />
+                </>
+              )}
+              <Button type="button" variant="secondary" onClick={() => removeActivity(i)}>
+                Remove
+              </Button>
             </fieldset>
           ))}
           <Button type="button" variant="secondary" onClick={addActivity}>
