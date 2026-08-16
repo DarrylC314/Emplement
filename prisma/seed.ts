@@ -221,9 +221,11 @@ async function main() {
   });
 
   // The claimant has already applied to the first posting, so logging in as
-  // the seeded employer immediately shows a real applicant to review and
-  // hire — the "Hire" click during the demo is what visibly updates the
-  // claimant's claim status, not something buried behind an empty list.
+  // the seeded employer immediately shows a real applicant to review. Note:
+  // claimant@example.com's claim is seeded RESTRICTED above (for the
+  // separate flagged-wage-conflict demo), so hiring THIS applicant won't
+  // show a visible claim-status change — see the second demo claimant below
+  // for that story.
   const warehousePosting = postings[0]!;
   const existingApplication = await prisma.jobApplication.findFirst({
     where: { jobPostingId: warehousePosting.id, candidateProfileId: candidateProfile.id },
@@ -233,6 +235,67 @@ async function main() {
       data: {
         jobPostingId: warehousePosting.id,
         candidateProfileId: candidateProfile.id,
+        initiatedBy: 'CANDIDATE',
+      },
+    });
+  }
+
+  // A second demo claimant whose claim starts ACTIVE, specifically so
+  // clicking Hire on their application visibly flips it to RESTRICTED —
+  // the actual before/after moment the marketplace hire flow is meant to
+  // demonstrate. Applies to a different posting than the first claimant so
+  // the employer sees two distinct applicants across two postings.
+  const claimant2PasswordHash = await bcrypt.hash('Claimant2Pass123', 12);
+  const claimant2User = await prisma.user.upsert({
+    where: { email: 'claimant2@example.com' },
+    update: {},
+    create: {
+      email: 'claimant2@example.com',
+      passwordHash: claimant2PasswordHash,
+      role: 'CLAIMANT',
+    },
+  });
+  const profile2 = await prisma.claimantProfile.upsert({
+    where: { userId: claimant2User.id },
+    update: {},
+    create: {
+      userId: claimant2User.id,
+      legalName: 'Seed Claimant Two',
+      identityVerificationStatus: 'VERIFIED',
+    },
+  });
+  const existingClaim2 = await prisma.claim.findFirst({ where: { claimantId: profile2.id } });
+  if (!existingClaim2) {
+    await prisma.claim.create({
+      data: {
+        claimantId: profile2.id,
+        status: 'ACTIVE',
+        benefitYearStart: new Date('2026-08-01'),
+        benefitYearEnd: new Date('2027-08-01'),
+        weeklyBenefitAmount: 300,
+      },
+    });
+  }
+  const candidateProfile2 = await prisma.candidateProfile.upsert({
+    where: { claimantProfileId: profile2.id },
+    update: {},
+    create: {
+      claimantProfileId: profile2.id,
+      headline: 'Customer Service Specialist',
+      skills: 'Call center experience, CRM software, bilingual (English/Spanish)',
+      availability: 'Immediate',
+      tags: ['OFFICE_ADMINISTRATIVE'],
+    },
+  });
+  const customerServicePosting = postings[1]!;
+  const existingApplication2 = await prisma.jobApplication.findFirst({
+    where: { jobPostingId: customerServicePosting.id, candidateProfileId: candidateProfile2.id },
+  });
+  if (!existingApplication2) {
+    await prisma.jobApplication.create({
+      data: {
+        jobPostingId: customerServicePosting.id,
+        candidateProfileId: candidateProfile2.id,
         initiatedBy: 'CANDIDATE',
       },
     });
@@ -258,8 +321,9 @@ async function main() {
   }
 
   console.log('Seed complete: caseworker@example.com / CaseworkerPass123');
-  console.log('Seed complete: claimant@example.com / ClaimantPass123 (has a flagged certification)');
-  console.log('Seed complete: employer@example.com / EmployerPass123 (has 3 postings and 1 applicant waiting)');
+  console.log('Seed complete: claimant@example.com / ClaimantPass123 (has a flagged certification, claim already RESTRICTED)');
+  console.log('Seed complete: claimant2@example.com / Claimant2Pass123 (claim ACTIVE — hire this applicant to see it flip to RESTRICTED)');
+  console.log('Seed complete: employer@example.com / EmployerPass123 (has 3 postings and 2 applicants waiting)');
 }
 
 main()
