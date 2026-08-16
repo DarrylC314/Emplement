@@ -39,6 +39,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
   const [slot3, setSlot3] = useState('');
   const [interviewLocation, setInterviewLocation] = useState('');
   const [proposeError, setProposeError] = useState<string | null>(null);
+  const [proposeFieldErrors, setProposeFieldErrors] = useState<Record<string, string | undefined>>({});
 
   async function loadApplications() {
     setLoadError(null);
@@ -95,8 +96,10 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
     }
   }
 
-  async function handlePropose(applicationId: string) {
+  async function handlePropose(applicationId: string, e: React.FormEvent) {
+    e.preventDefault();
     setProposeError(null);
+    setProposeFieldErrors({});
     const slots = [slot1, slot2, slot3].filter((s) => s.trim() !== '');
     const res = await fetch(`/api/employer/job-applications/${applicationId}/interview`, {
       method: 'POST',
@@ -104,6 +107,16 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
     });
     if (!res.ok) {
       const body = await res.json().catch(() => null);
+      const zodFieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
+      if (zodFieldErrors) {
+        const nextFieldErrors: Record<string, string> = {};
+        for (const [field, messages] of Object.entries(zodFieldErrors)) {
+          if (!messages?.[0]) continue;
+          nextFieldErrors[field] = messages[0];
+        }
+        setProposeFieldErrors(nextFieldErrors);
+        return;
+      }
       setProposeError(body?.error ?? 'We could not propose interview times. Please try again.');
       return;
     }
@@ -191,41 +204,47 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
                       {proposeError}
                     </p>
                   )}
-                  <TextField
-                    id={`slot1-${a.id}`}
-                    label="Slot 1"
-                    type="datetime-local"
-                    value={slot1}
-                    onChange={setSlot1}
-                    required
-                  />
-                  <TextField
-                    id={`slot2-${a.id}`}
-                    label="Slot 2"
-                    type="datetime-local"
-                    value={slot2}
-                    onChange={setSlot2}
-                    required
-                  />
-                  <TextField
-                    id={`slot3-${a.id}`}
-                    label="Slot 3 (optional)"
-                    type="datetime-local"
-                    value={slot3}
-                    onChange={setSlot3}
-                  />
-                  <TextField
-                    id={`location-${a.id}`}
-                    label="Location or video link (optional)"
-                    value={interviewLocation}
-                    onChange={setInterviewLocation}
-                  />
-                  <div className="flex gap-3">
-                    <Button onClick={() => handlePropose(a.id)}>Send proposal</Button>
-                    <Button variant="secondary" onClick={() => setProposingId(null)}>
-                      Cancel
-                    </Button>
-                  </div>
+                  <form onSubmit={(e) => handlePropose(a.id, e)}>
+                    <TextField
+                      id={`slot1-${a.id}`}
+                      label="Slot 1"
+                      type="datetime-local"
+                      value={slot1}
+                      onChange={setSlot1}
+                      error={proposeFieldErrors.slots}
+                      required
+                    />
+                    <TextField
+                      id={`slot2-${a.id}`}
+                      label="Slot 2"
+                      type="datetime-local"
+                      value={slot2}
+                      onChange={setSlot2}
+                      error={undefined}
+                      required
+                    />
+                    <TextField
+                      id={`slot3-${a.id}`}
+                      label="Slot 3 (optional)"
+                      type="datetime-local"
+                      value={slot3}
+                      onChange={setSlot3}
+                      error={undefined}
+                    />
+                    <TextField
+                      id={`location-${a.id}`}
+                      label="Location or video link (optional)"
+                      value={interviewLocation}
+                      onChange={setInterviewLocation}
+                      error={proposeFieldErrors.location}
+                    />
+                    <div className="flex gap-3">
+                      <Button type="submit">Send proposal</Button>
+                      <Button type="button" variant="secondary" onClick={() => setProposingId(null)}>
+                        Cancel
+                      </Button>
+                    </div>
+                  </form>
                 </div>
               )}
               {a.interview?.status === 'PROPOSED' && (
