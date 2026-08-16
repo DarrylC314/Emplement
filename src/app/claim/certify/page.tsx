@@ -1,6 +1,6 @@
 'use client';
 
-import { Suspense, useState } from 'react';
+import { Suspense, useRef, useState } from 'react';
 import { useSearchParams, useRouter } from 'next/navigation';
 import { Fieldset } from '@/components/ui/Fieldset';
 import { TextField } from '@/components/ui/TextField';
@@ -44,10 +44,15 @@ function CertifyForm() {
     { employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
   ]);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
-  // Application IDs the claimant has explicitly removed, so a later blur of
-  // the (unchanged) week-ending date doesn't silently resurrect a row they
-  // just deleted.
-  const [removedApplicationIds, setRemovedApplicationIds] = useState<Set<string>>(new Set());
+  // `weekEndingDate:applicationId` pairs the claimant has explicitly removed,
+  // so a later blur of the (unchanged) week-ending date doesn't silently
+  // resurrect a row they just deleted. Scoped per-date because week-ending
+  // dates aren't locked to a fixed grid — two dates less than 7 days apart
+  // produce overlapping windows, so the same application can match more than
+  // one date's prefill. A ref (not state) avoids a stale-closure read in
+  // handleWeekEndingDateBlur if a removal happens while its fetch is in
+  // flight — the same class of bug already fixed once for `activities`.
+  const removedApplicationIdsRef = useRef<Set<string>>(new Set());
 
   function updateActivity(index: number, field: keyof JobSearchEntry, value: string) {
     const next = [...activities];
@@ -67,18 +72,19 @@ function CertifyForm() {
   function removeActivity(index: number) {
     const removed = activities[index];
     if (removed?.source === 'marketplace' && removed.applicationId) {
-      setRemovedApplicationIds((prev) => new Set(prev).add(removed.applicationId!));
+      removedApplicationIdsRef.current.add(`${weekEndingDate}:${removed.applicationId}`);
     }
     setActivities(activities.filter((_, i) => i !== index));
   }
 
   async function handleWeekEndingDateBlur() {
-    if (!weekEndingDate || isNaN(Date.parse(weekEndingDate))) return;
+    const dateAtBlur = weekEndingDate;
+    if (!dateAtBlur || isNaN(Date.parse(dateAtBlur))) return;
     const res = await fetch('/api/job-applications');
     if (!res.ok) return;
     const applications: MarketplaceApplication[] = await res.json();
-    const matches = filterApplicationsInWeek(applications, weekEndingDate).filter(
-      (a) => !removedApplicationIds.has(a.id)
+    const matches = filterApplicationsInWeek(applications, dateAtBlur).filter(
+      (a) => !removedApplicationIdsRef.current.has(`${dateAtBlur}:${a.id}`)
     );
     const prefilled: JobSearchEntry[] = matches.map((a) => ({
       employerName: a.jobPosting.employer.companyName ?? 'An employer',
@@ -94,6 +100,18 @@ function CertifyForm() {
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setErrors([]);
+    // Marketplace prefill can leave the form's originally-seeded blank manual
+    // row untouched alongside real prefilled rows. A claimant who never
+    // typed into that row hasn't left anything "incomplete" — drop
+    // completely-untouched manual rows here rather than 400ing on a field
+    // the claimant never saw as required. A partially-filled row (some but
+    // not all fields entered) is left as-is, so its real validation error
+    // still surfaces normally.
+    const submittableActivities = activities.filter(
+      (a) =>
+        a.source === 'marketplace' ||
+        a.employerName || a.contactMethod || a.contactDate || a.position
+    );
     const res = await fetch('/api/certifications', {
       method: 'POST',
       body: JSON.stringify({
@@ -103,12 +121,14 @@ function CertifyForm() {
         workedThisWeek: workedThisWeek === 'yes',
         earnings: Number(earnings),
         refusedWork: refusedWork === 'yes',
-        jobSearchActivities: activities.map(({ employerName, contactMethod, contactDate, position }) => ({
-          employerName,
-          contactMethod,
-          contactDate,
-          position,
-        })),
+        jobSearchActivities: submittableActivities.map(
+          ({ employerName, contactMethod, contactDate, position }) => ({
+            employerName,
+            contactMethod,
+            contactDate,
+            position,
+          })
+        ),
       }),
     });
     if (res.ok) {
