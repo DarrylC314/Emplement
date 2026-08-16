@@ -98,7 +98,7 @@ export default function BrowseCandidatesPage() {
       ? scoreByTagOverlap(selectedRecommendPosting.tags, candidates)
       : [];
 
-  function renderCandidate(c: Candidate) {
+  function renderCandidate(c: Candidate, prefix: string) {
     return (
       <li key={c.id} className="border border-border rounded p-4">
         <p className="font-medium">{c.headline}</p>
@@ -112,11 +112,11 @@ export default function BrowseCandidatesPage() {
         ) : postings !== null && postings.length > 0 ? (
           <div className="flex items-end gap-3">
             <div className="mb-4">
-              <label htmlFor={`posting-${c.id}`} className="block font-medium text-text-primary mb-1">
+              <label htmlFor={`${prefix}-posting-${c.id}`} className="block font-medium text-text-primary mb-1">
                 For which posting?
               </label>
               <select
-                id={`posting-${c.id}`}
+                id={`${prefix}-posting-${c.id}`}
                 value={selectedPostingId[c.id] ?? ''}
                 onChange={(e) =>
                   setSelectedPostingId((prev) => ({ ...prev, [c.id]: e.target.value }))
@@ -181,7 +181,7 @@ export default function BrowseCandidatesPage() {
       {recommended.length > 0 && selectedRecommendPosting && (
         <section className="mb-8">
           <h2 className="text-xl font-bold mb-4">Recommended for {selectedRecommendPosting.title}</h2>
-          <ul className="space-y-4">{recommended.map(renderCandidate)}</ul>
+          <ul className="space-y-4">{recommended.map((c) => renderCandidate(c, 'rec'))}</ul>
         </section>
       )}
 
@@ -190,7 +190,7 @@ export default function BrowseCandidatesPage() {
         <p className="text-sm text-text-secondary">No candidates on the marketplace yet.</p>
       )}
       {candidates !== null && candidates.length > 0 && (
-        <ul className="space-y-4">{candidates.map(renderCandidate)}</ul>
+        <ul className="space-y-4">{candidates.map((c) => renderCandidate(c, 'all'))}</ul>
       )}
     </main>
   );

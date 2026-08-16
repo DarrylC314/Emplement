@@ -177,6 +177,11 @@ test('claimant builds a candidate profile, applies, and employer hires them thro
     recommendedCandidatesSection.locator('p.font-medium').filter({ hasText: 'Warehouse associate' })
   ).toBeVisible();
 
+  const employerResults = await new AxeBuilder({ page })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+    .analyze();
+  expect(employerResults.violations).toEqual([]);
+
   // Hire as the employer.
   await page.goto('/employer/job-postings');
   await waitForHydration(page);
