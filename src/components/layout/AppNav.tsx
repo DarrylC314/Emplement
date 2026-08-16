@@ -11,6 +11,8 @@ const CLAIMANT_LINKS: NavLink[] = [
   { href: '/claim/new', label: 'File a claim' },
   { href: '/claim/verify-identity', label: 'Verify your identity' },
   { href: '/claim/messages', label: 'Messages' },
+  { href: '/claim/candidate-profile', label: 'Candidate profile' },
+  { href: '/claim/browse-postings', label: 'Job postings' },
 ];
 
 const STAFF_LINKS: NavLink[] = [
@@ -21,6 +23,8 @@ const STAFF_LINKS: NavLink[] = [
 const EMPLOYER_LINKS: NavLink[] = [
   { href: '/employer/dashboard', label: 'Dashboard' },
   { href: '/employer/verify-fein', label: 'Verify your company' },
+  { href: '/employer/job-postings', label: 'Job postings' },
+  { href: '/employer/browse-candidates', label: 'Browse candidates' },
 ];
 
 /**

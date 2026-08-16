@@ -73,6 +73,22 @@ enum NameSuffix {
   IV
 }
 
+enum JobPostingStatus {
+  OPEN
+  FILLED
+}
+
+enum ApplicationInitiator {
+  CANDIDATE
+  EMPLOYER
+}
+
+enum ApplicationStatus {
+  PENDING
+  HIRED
+  REJECTED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -111,6 +127,7 @@ model ClaimantProfile {
   claims                  Claim[]
   messages                Message[]                     @relation("ClaimantMessages")
   matchedEmploymentEvents EmploymentEvent[]
+  candidateProfile        CandidateProfile?
 }
 
 model IdentityVerificationAttempt {
@@ -275,6 +292,7 @@ model EmployerProfile {
   createdAt          DateTime           @default(now())
 
   employmentEvents EmploymentEvent[]
+  jobPostings      JobPosting[]
 }
 
 model EmploymentEvent {
@@ -291,4 +309,43 @@ model EmploymentEvent {
   dismissedAt       DateTime?
   dismissedByUserId String?
   dismissedBy       User?     @relation(fields: [dismissedByUserId], references: [id])
+}
+
+model CandidateProfile {
+  id                String          @id @default(cuid())
+  claimantProfileId String          @unique
+  claimantProfile   ClaimantProfile @relation(fields: [claimantProfileId], references: [id])
+  headline          String
+  skills            String
+  bio               String?
+  availability      String
+  createdAt         DateTime        @default(now())
+
+  applications JobApplication[]
+}
+
+model JobPosting {
+  id          String           @id @default(cuid())
+  employerId  String
+  employer    EmployerProfile  @relation(fields: [employerId], references: [id])
+  title       String
+  description String
+  location    String
+  status      JobPostingStatus @default(OPEN)
+  createdAt   DateTime         @default(now())
+
+  applications JobApplication[]
+}
+
+model JobApplication {
+  id                 String               @id @default(cuid())
+  jobPostingId       String
+  jobPosting         JobPosting           @relation(fields: [jobPostingId], references: [id])
+  candidateProfileId String
+  candidateProfile   CandidateProfile     @relation(fields: [candidateProfileId], references: [id])
+  initiatedBy        ApplicationInitiator
+  status             ApplicationStatus    @default(PENDING)
+  createdAt          DateTime             @default(now())
+
+  @@unique([jobPostingId, candidateProfileId])
 }

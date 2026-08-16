@@ -210,6 +210,67 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: staffUser.id } });
   });
 
+  it('can create and read back a CandidateProfile, JobPosting, and JobApplication', async () => {
+    const claimantUser = await prisma.user.create({
+      data: { email: `schema-test-candidate-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'CLAIMANT' },
+    });
+    const claimantProfile = await prisma.claimantProfile.create({
+      data: { userId: claimantUser.id, ssnHash: `schema-test-hash-${Date.now()}` },
+    });
+
+    const employerUser = await prisma.user.create({
+      data: { email: `schema-test-employer-marketplace-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'EMPLOYER' },
+    });
+    const employerProfile = await prisma.employerProfile.create({ data: { userId: employerUser.id } });
+
+    const candidateProfile = await prisma.candidateProfile.create({
+      data: {
+        claimantProfileId: claimantProfile.id,
+        headline: 'Warehouse associate',
+        skills: 'Forklift certified, inventory management',
+        availability: 'Immediate',
+      },
+    });
+    expect(candidateProfile.bio).toBeNull();
+
+    const jobPosting = await prisma.jobPosting.create({
+      data: {
+        employerId: employerProfile.id,
+        title: 'Warehouse associate',
+        description: 'Day shift, full time',
+        location: 'Jefferson City, MO',
+      },
+    });
+    expect(jobPosting.status).toBe('OPEN');
+
+    const application = await prisma.jobApplication.create({
+      data: {
+        jobPostingId: jobPosting.id,
+        candidateProfileId: candidateProfile.id,
+        initiatedBy: 'CANDIDATE',
+      },
+    });
+    expect(application.status).toBe('PENDING');
+
+    await expect(
+      prisma.jobApplication.create({
+        data: {
+          jobPostingId: jobPosting.id,
+          candidateProfileId: candidateProfile.id,
+          initiatedBy: 'EMPLOYER',
+        },
+      })
+    ).rejects.toThrow();
+
+    await prisma.jobApplication.delete({ where: { id: application.id } });
+    await prisma.jobPosting.delete({ where: { id: jobPosting.id } });
+    await prisma.candidateProfile.delete({ where: { id: candidateProfile.id } });
+    await prisma.employerProfile.delete({ where: { id: employerProfile.id } });
+    await prisma.user.delete({ where: { id: employerUser.id } });
+    await prisma.claimantProfile.delete({ where: { id: claimantProfile.id } });
+    await prisma.user.delete({ where: { id: claimantUser.id } });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });
