@@ -116,7 +116,7 @@ describe('CertifyPage marketplace prefill', () => {
     expect(await screen.findByText('Riverbend Logistics Inc.')).toBeInTheDocument();
   });
 
-  it('degrades to plain manual entry with no error banner when the prefill fetch fails', async () => {
+  it('shows a visible (non-blocking) status, not an alert banner, when the prefill fetch fails', async () => {
     mockJobApplicationsFetch([application()], false);
     render(<CertifyPage />);
 
@@ -127,8 +127,60 @@ describe('CertifyPage marketplace prefill', () => {
     await waitFor(() => expect(fetch).toHaveBeenCalled());
     expect(screen.queryByText('Riverbend Logistics Inc.')).not.toBeInTheDocument();
     expect(screen.queryByRole('alert')).not.toBeInTheDocument();
+    expect(
+      await screen.findByText("We couldn't check for marketplace applications. You can still add job search activities manually.")
+    ).toBeInTheDocument();
     // The seeded manual row is still there and usable.
     expect(screen.getByLabelText(/employer name/i)).toBeInTheDocument();
+  });
+
+  it('shows a visible "no applications found" status when nothing matches the selected week', async () => {
+    mockJobApplicationsFetch([]);
+    render(<CertifyPage />);
+
+    const dateField = screen.getByLabelText(/week ending date/i);
+    fireEvent.change(dateField, { target: { value: '2026-08-15' } });
+    fireEvent.blur(dateField);
+
+    expect(
+      await screen.findByText('No marketplace applications found for this week — add job search activities manually below.')
+    ).toBeInTheDocument();
+  });
+
+  it('shows a loading status while the prefill fetch is in flight', async () => {
+    let resolveFetch: (value: Response) => void;
+    const pending = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input === '/api/job-applications') return pending;
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+    render(<CertifyPage />);
+
+    const dateField = screen.getByLabelText(/week ending date/i);
+    fireEvent.change(dateField, { target: { value: '2026-08-15' } });
+    fireEvent.blur(dateField);
+
+    expect(await screen.findByText('Checking for marketplace applications for this week…')).toBeInTheDocument();
+    resolveFetch!({ ok: true, json: async () => [] } as Response);
+    await screen.findByText(/no marketplace applications found/i);
+  });
+
+  it('renders the status region unconditionally, before any blur, so its later appearance never shifts layout', () => {
+    // An earlier version only mounted this <p role="status"> once
+    // prefillStatus left 'idle', which inserted a new line of text
+    // directly above "Add another job search activity" at the moment a
+    // blur fired — shifting that button down mid-click. Confirmed via a
+    // real E2E regression (two rapid clicks collapsing into one row
+    // because the second click landed on shifted content). The fix keeps
+    // the element always in the DOM (empty when idle) so its content
+    // changing never changes the page's layout.
+    render(<CertifyPage />);
+    const statusRegions = screen.getAllByRole('status');
+    expect(statusRegions.length).toBeGreaterThan(0);
+    expect(statusRegions[0]).toBeInTheDocument();
+    expect(statusRegions[0]).toHaveTextContent('');
   });
 
   it('drops a fully-untouched manual row from submission but keeps a partially-filled one', async () => {
