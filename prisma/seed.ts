@@ -43,7 +43,11 @@ async function main() {
     (await prisma.claim.create({
       data: {
         claimantId: profile.id,
-        status: 'RESTRICTED',
+        // ACTIVE (not RESTRICTED): the guided demo scenario hires this same
+        // claimant later (see the Interview seeded further below) and needs
+        // a visible ACTIVE -> RESTRICTED transition to show — the hire
+        // route only flips claims that start ACTIVE.
+        status: 'ACTIVE',
         benefitYearStart: new Date('2026-08-01'),
         benefitYearEnd: new Date('2027-08-01'),
         weeklyBenefitAmount: 320,
@@ -221,11 +225,11 @@ async function main() {
   });
 
   // The claimant has already applied to the first posting, so logging in as
-  // the seeded employer immediately shows a real applicant to review. Note:
-  // claimant@example.com's claim is seeded RESTRICTED above (for the
-  // separate flagged-wage-conflict demo), so hiring THIS applicant won't
-  // show a visible claim-status change — see the second demo claimant below
-  // for that story.
+  // the seeded employer immediately shows a real applicant to review. This
+  // is also the guided demo scenario's claimant/application: their claim
+  // starts ACTIVE above specifically so hiring them later (once the
+  // Interview seeded just below is accepted) produces a visible
+  // ACTIVE -> RESTRICTED transition.
   const warehousePosting = postings[0]!;
   const application1 =
     (await prisma.jobApplication.findFirst({
@@ -373,7 +377,7 @@ async function main() {
   }
 
   console.log('Seed complete: caseworker@example.com / CaseworkerPass123');
-  console.log('Seed complete: claimant@example.com / ClaimantPass123 (flagged certification, claim RESTRICTED; has a PROPOSED interview to Accept/Decline on My Applications)');
+  console.log('Seed complete: claimant@example.com / ClaimantPass123 (flagged certification, claim ACTIVE; has a PROPOSED interview to Accept/Decline on My Applications — this is the guided demo scenario claimant)');
   console.log('Seed complete: claimant2@example.com / Claimant2Pass123 (claim ACTIVE, interview already CONFIRMED — hire this applicant to see it flip to RESTRICTED)');
   console.log('Seed complete: employer@example.com / EmployerPass123 (3 postings, 2 applicants — one interview proposed, one confirmed and ready to hire)');
 }
