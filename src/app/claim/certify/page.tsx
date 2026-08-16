@@ -14,6 +14,7 @@ type JobSearchEntry = {
   contactDate: string;
   position: string;
   source: 'marketplace' | 'manual';
+  applicationId?: string;
 };
 
 const YES_NO = [
@@ -43,6 +44,10 @@ function CertifyForm() {
     { employerName: '', contactMethod: '', contactDate: '', position: '', source: 'manual' },
   ]);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
+  // Application IDs the claimant has explicitly removed, so a later blur of
+  // the (unchanged) week-ending date doesn't silently resurrect a row they
+  // just deleted.
+  const [removedApplicationIds, setRemovedApplicationIds] = useState<Set<string>>(new Set());
 
   function updateActivity(index: number, field: keyof JobSearchEntry, value: string) {
     const next = [...activities];
@@ -60,6 +65,10 @@ function CertifyForm() {
   }
 
   function removeActivity(index: number) {
+    const removed = activities[index];
+    if (removed?.source === 'marketplace' && removed.applicationId) {
+      setRemovedApplicationIds((prev) => new Set(prev).add(removed.applicationId!));
+    }
     setActivities(activities.filter((_, i) => i !== index));
   }
 
@@ -68,13 +77,16 @@ function CertifyForm() {
     const res = await fetch('/api/job-applications');
     if (!res.ok) return;
     const applications: MarketplaceApplication[] = await res.json();
-    const matches = filterApplicationsInWeek(applications, weekEndingDate);
+    const matches = filterApplicationsInWeek(applications, weekEndingDate).filter(
+      (a) => !removedApplicationIds.has(a.id)
+    );
     const prefilled: JobSearchEntry[] = matches.map((a) => ({
       employerName: a.jobPosting.employer.companyName ?? 'An employer',
       contactMethod: 'Applied through Emplement marketplace',
       contactDate: a.createdAt.slice(0, 10),
       position: a.jobPosting.title,
       source: 'marketplace',
+      applicationId: a.id,
     }));
     setActivities([...prefilled, ...activities.filter((a) => a.source === 'manual')]);
   }
