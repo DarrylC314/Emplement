@@ -5,6 +5,48 @@ import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
 
+export async function GET() {
+  const session = await getServerAuthSession();
+  const access = requireRole(session, ['CLAIMANT']);
+  if (!access.ok) {
+    return apiError('Unauthorized', access.status);
+  }
+  if (!session!.user.claimantProfileId) {
+    return apiError('Claimant profile not found', 404);
+  }
+
+  const candidateProfile = await prisma.candidateProfile.findUnique({
+    where: { claimantProfileId: session!.user.claimantProfileId },
+    select: { id: true },
+  });
+  if (!candidateProfile) {
+    return Response.json([]);
+  }
+
+  const applications = await prisma.jobApplication.findMany({
+    where: { candidateProfileId: candidateProfile.id },
+    orderBy: { createdAt: 'desc' },
+    select: {
+      id: true,
+      status: true,
+      initiatedBy: true,
+      createdAt: true,
+      jobPosting: { select: { title: true, employer: { select: { companyName: true } } } },
+      interview: {
+        select: {
+          id: true,
+          status: true,
+          location: true,
+          confirmedSlot: true,
+          slots: { select: { id: true, startTime: true } },
+        },
+      },
+    },
+  });
+
+  return Response.json(applications);
+}
+
 export async function POST(req: Request) {
   const session = await getServerAuthSession();
   const access = requireRole(session, ['CLAIMANT']);
