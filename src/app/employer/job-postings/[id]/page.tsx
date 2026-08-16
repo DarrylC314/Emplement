@@ -59,6 +59,26 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
     }
   }
 
+  async function handleHire(id: string) {
+    setActionError(null);
+    setPendingId(id);
+    try {
+      const res = await fetch(`/api/employer/job-applications/${id}/hire`, { method: 'POST' });
+      if (!res.ok) {
+        setActionError(
+          res.status === 409
+            ? 'This application (or its posting) was already resolved.'
+            : 'We could not hire this candidate. Please try again.'
+        );
+        if (res.status === 409) await loadApplications();
+        return;
+      }
+      await loadApplications();
+    } finally {
+      setPendingId(null);
+    }
+  }
+
   if (status === 'loading') {
     return (
       <main id="main-content" className="max-w-3xl mx-auto p-8">
@@ -104,6 +124,9 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
               <p className="text-sm text-text-secondary mb-2">Availability: {a.candidateProfile.availability}</p>
               {a.status === 'PENDING' && (
                 <div className="flex gap-3">
+                  <Button disabled={pendingId === a.id} onClick={() => handleHire(a.id)}>
+                    Hire
+                  </Button>
                   <Button disabled={pendingId === a.id} onClick={() => handleReject(a.id)} variant="secondary">
                     Reject
                   </Button>
