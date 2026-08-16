@@ -1,5 +1,6 @@
 // tests/e2e/employer-marketplace-flow.spec.ts
 import { test, expect } from '@playwright/test';
+import AxeBuilder from '@axe-core/playwright';
 import { prisma } from '../../src/lib/prisma';
 import { waitForHydration } from './helpers';
 
@@ -83,12 +84,15 @@ test('claimant builds a candidate profile, applies, and employer hires them thro
   });
   claimId = seededClaim.id;
 
-  // Build a candidate profile.
+  // Build a candidate profile, tagged so it surfaces in the employer's
+  // "Recommended for [posting]" section and the posting surfaces in the
+  // claimant's "Recommended for you" section.
   await page.goto('/claim/candidate-profile');
   await waitForHydration(page);
   await page.getByLabel('Headline').fill('Warehouse associate');
   await page.getByLabel('Skills').fill('Forklift certified, inventory management');
   await page.getByLabel('Availability').fill('Immediate');
+  await page.getByLabel('Transportation & Material Moving').check();
   await page.getByRole('button', { name: 'Save profile' }).click();
   await expect(page.getByText('Warehouse associate')).toBeVisible();
 
@@ -113,12 +117,13 @@ test('claimant builds a candidate profile, applies, and employer hires them thro
   await page.getByRole('button', { name: 'Verify' }).click();
   await expect(page).toHaveURL(/\/employer\/dashboard/);
 
-  // Post a job.
+  // Post a job with the same tag as the candidate profile above.
   await page.goto('/employer/job-postings');
   await waitForHydration(page);
   await page.getByLabel('Title').fill('Warehouse associate');
   await page.getByLabel('Description').fill('Day shift, full time');
   await page.getByLabel('Location').fill('Jefferson City, MO');
+  await page.getByLabel('Transportation & Material Moving').check();
   await page.getByRole('button', { name: 'Post job' }).click();
   await expect(page.getByText('Warehouse associate').first()).toBeVisible();
 
@@ -133,9 +138,44 @@ test('claimant builds a candidate profile, applies, and employer hires them thro
 
   await claimantPage.goto('/claim/browse-postings');
   await waitForHydration(claimantPage);
+  await expect(claimantPage.getByRole('heading', { name: 'Recommended for you' })).toBeVisible();
   await expect(claimantPage.getByText('Warehouse associate').first()).toBeVisible();
-  await claimantPage.getByRole('button', { name: 'Apply' }).click();
-  await expect(claimantPage.getByText('✓ Applied')).toBeVisible();
+
+  const results = await new AxeBuilder({ page: claimantPage })
+    .withTags(['wcag2a', 'wcag2aa', 'wcag22aa'])
+    .analyze();
+  expect(results.violations).toEqual([]);
+
+  // The posting now renders in both the Recommended section and the full
+  // list below it (Task 4), so both the button and its resulting status
+  // text resolve to two elements — .first() picks the Recommended
+  // section's copy, and clicking it updates appliedIds for the shared
+  // posting id, so the full list's copy reflects the same state too.
+  await claimantPage.getByRole('button', { name: 'Apply' }).first().click();
+  await expect(claimantPage.getByText('✓ Applied').first()).toBeVisible();
+
+  // Employer's browse-candidates page recommends the tagged candidate for
+  // the matching posting. Since this employer has exactly one open
+  // posting, the page auto-selects it — the explicit selectOption call
+  // below is just defensive against that timing.
+  await page.goto('/employer/browse-candidates');
+  await waitForHydration(page);
+  await page.getByLabel('Show recommendations for').selectOption({ label: 'Warehouse associate' });
+  // Scoped to the Recommended section itself: the "Show recommendations
+  // for" <select> above it has a same-text <option>, and each candidate
+  // card in this section also renders a "For which posting?" <select>
+  // with a same-text <option>. Closed <select> options are present in the
+  // DOM but not real page matches, and Playwright's visibility detection
+  // for them is unreliable enough that filtering by visible=true still
+  // resolves to one — so target the candidate headline's own <p> element
+  // instead of raw text, which sidesteps the <option> ambiguity entirely.
+  const recommendedCandidatesSection = page.locator('section', {
+    has: page.getByRole('heading', { name: 'Recommended for Warehouse associate' }),
+  });
+  await expect(recommendedCandidatesSection.getByRole('heading', { name: 'Recommended for Warehouse associate' })).toBeVisible();
+  await expect(
+    recommendedCandidatesSection.locator('p.font-medium').filter({ hasText: 'Warehouse associate' })
+  ).toBeVisible();
 
   // Hire as the employer.
   await page.goto('/employer/job-postings');
