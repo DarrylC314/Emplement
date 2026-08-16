@@ -91,10 +91,11 @@ describe('candidate profile routes', () => {
         identityVerificationStatus: 'VERIFIED',
       },
     });
-    vi.mocked(getServerAuthSession).mockResolvedValueOnce({
+    const taggedSession = {
       user: { id: taggedUser.id, role: 'CLAIMANT', claimantProfileId: taggedProfile.id, email: taggedUser.email },
       expires: new Date(Date.now() + 3600_000).toISOString(),
-    });
+    };
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce(taggedSession);
     const req = new Request('http://localhost/api/candidate-profile', {
       method: 'POST',
       body: JSON.stringify({
@@ -108,6 +109,11 @@ describe('candidate profile routes', () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.tags).toEqual(['HEALTHCARE_PRACTITIONER', 'PROTECTIVE_SERVICE']);
+
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce(taggedSession);
+    const getRes = await getOwnProfile();
+    const getBody = await getRes.json();
+    expect(getBody.tags).toEqual(['HEALTHCARE_PRACTITIONER', 'PROTECTIVE_SERVICE']);
 
     await prisma.candidateProfile.delete({ where: { claimantProfileId: taggedProfile.id } });
     await prisma.claimantProfile.delete({ where: { id: taggedProfile.id } });

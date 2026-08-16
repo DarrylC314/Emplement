@@ -68,7 +68,13 @@ describe('employer browse candidates and reach out', () => {
     });
     claimantProfileId = claimantProfile.id;
     const candidateProfile = await prisma.candidateProfile.create({
-      data: { claimantProfileId, headline: 'Retail associate', skills: 'POS systems', availability: 'Immediate' },
+      data: {
+        claimantProfileId,
+        headline: 'Retail associate',
+        skills: 'POS systems',
+        availability: 'Immediate',
+        tags: ['SALES'],
+      },
     });
     candidateProfileId = candidateProfile.id;
 
@@ -91,12 +97,13 @@ describe('employer browse candidates and reach out', () => {
     expect(res.status).toBe(403);
   });
 
-  it('lists candidate profiles without leaking claimant PII', async () => {
+  it('lists candidate profiles without leaking claimant PII, including tags', async () => {
     const res = await listCandidates();
     expect(res.status).toBe(200);
     const candidates = await res.json();
     const target = candidates.find((c: { id: string }) => c.id === candidateProfileId);
     expect(target.headline).toBe('Retail associate');
+    expect(target.tags).toEqual(['SALES']);
     expect(target.legalName).toBeUndefined();
     expect(target.ssnHash).toBeUndefined();
     expect(target.claimantProfileId).toBeUndefined();

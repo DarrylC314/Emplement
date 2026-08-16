@@ -79,6 +79,11 @@ describe('employer job posting routes', () => {
     expect(res.status).toBe(201);
     const body = await res.json();
     expect(body.tags).toEqual(['HEALTHCARE_PRACTITIONER']);
+
+    const listRes = await listOwnPostings();
+    const list = await listRes.json();
+    const created = list.find((p: { id: string }) => p.id === body.id);
+    expect(created.tags).toEqual(['HEALTHCARE_PRACTITIONER']);
   });
 
   afterAll(async () => {

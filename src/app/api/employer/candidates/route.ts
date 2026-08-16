@@ -28,6 +28,7 @@ export async function GET() {
       skills: true,
       bio: true,
       availability: true,
+      tags: true,
       createdAt: true,
     },
   });

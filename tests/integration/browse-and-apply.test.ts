@@ -47,7 +47,13 @@ describe('claimant browse and apply', () => {
     employerProfileId = employerProfile.id;
 
     const openPosting = await prisma.jobPosting.create({
-      data: { employerId: employerProfileId, title: 'Retail associate', description: 'Front of store', location: 'Columbia, MO' },
+      data: {
+        employerId: employerProfileId,
+        title: 'Retail associate',
+        description: 'Front of store',
+        location: 'Columbia, MO',
+        tags: ['SALES'],
+      },
     });
     openPostingId = openPosting.id;
 
@@ -57,13 +63,16 @@ describe('claimant browse and apply', () => {
     filledPostingId = filledPosting.id;
   });
 
-  it('lists only OPEN postings', async () => {
+  it('lists only OPEN postings, including tags', async () => {
     const res = await listOpenPostings();
     expect(res.status).toBe(200);
     const postings = await res.json();
     const ids = postings.map((p: { id: string }) => p.id);
     expect(ids).toContain(openPostingId);
     expect(ids).not.toContain(filledPostingId);
+
+    const openPosting = postings.find((p: { id: string }) => p.id === openPostingId);
+    expect(openPosting.tags).toEqual(['SALES']);
   });
 
   it('creates an application when a candidate applies', async () => {

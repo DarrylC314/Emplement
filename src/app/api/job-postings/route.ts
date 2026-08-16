@@ -18,6 +18,7 @@ export async function GET() {
       title: true,
       description: true,
       location: true,
+      tags: true,
       createdAt: true,
       employer: { select: { companyName: true } },
     },

@@ -24,6 +24,7 @@ export async function GET() {
       skills: true,
       bio: true,
       availability: true,
+      tags: true,
     },
   });
   if (!profile) {

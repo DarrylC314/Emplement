@@ -24,6 +24,7 @@ export async function GET() {
       description: true,
       location: true,
       status: true,
+      tags: true,
       createdAt: true,
     },
   });
