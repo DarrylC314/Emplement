@@ -271,6 +271,51 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: claimantUser.id } });
   });
 
+  it('can create and read back tags on CandidateProfile and JobPosting', async () => {
+    const claimantUser = await prisma.user.create({
+      data: { email: `schema-test-tags-claimant-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'CLAIMANT' },
+    });
+    const claimantProfile = await prisma.claimantProfile.create({
+      data: { userId: claimantUser.id, ssnHash: `schema-test-tags-hash-${Date.now()}` },
+    });
+
+    const employerUser = await prisma.user.create({
+      data: { email: `schema-test-tags-employer-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'EMPLOYER' },
+    });
+    const employerProfile = await prisma.employerProfile.create({ data: { userId: employerUser.id } });
+
+    const candidateProfile = await prisma.candidateProfile.create({
+      data: {
+        claimantProfileId: claimantProfile.id,
+        headline: 'Paramedic',
+        skills: 'Emergency response',
+        availability: 'On call',
+        tags: ['HEALTHCARE_PRACTITIONER', 'PROTECTIVE_SERVICE'],
+      },
+    });
+    expect(candidateProfile.tags).toEqual(['HEALTHCARE_PRACTITIONER', 'PROTECTIVE_SERVICE']);
+
+    const untaggedCandidate = await prisma.candidateProfile.findUnique({ where: { id: candidateProfile.id } });
+    expect(Array.isArray(untaggedCandidate?.tags)).toBe(true);
+
+    const jobPosting = await prisma.jobPosting.create({
+      data: {
+        employerId: employerProfile.id,
+        title: 'Paramedic',
+        description: 'EMS response team',
+        location: 'Columbia, MO',
+      },
+    });
+    expect(jobPosting.tags).toEqual([]);
+
+    await prisma.jobPosting.delete({ where: { id: jobPosting.id } });
+    await prisma.candidateProfile.delete({ where: { id: candidateProfile.id } });
+    await prisma.employerProfile.delete({ where: { id: employerProfile.id } });
+    await prisma.user.delete({ where: { id: employerUser.id } });
+    await prisma.claimantProfile.delete({ where: { id: claimantProfile.id } });
+    await prisma.user.delete({ where: { id: claimantUser.id } });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });

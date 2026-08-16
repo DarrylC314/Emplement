@@ -89,6 +89,34 @@ enum ApplicationStatus {
   REJECTED
 }
 
+enum TagCategory {
+  MANAGEMENT
+  BUSINESS_FINANCIAL
+  COMPUTER_MATHEMATICAL
+  ARCHITECTURE_ENGINEERING
+  SCIENCE
+  COMMUNITY_SOCIAL_SERVICE
+  LEGAL
+  EDUCATION_TRAINING
+  ARTS_DESIGN_MEDIA
+  SPORTS_ENTERTAINMENT
+  HEALTHCARE_PRACTITIONER
+  HEALTHCARE_SUPPORT
+  PROTECTIVE_SERVICE
+  FOOD_SERVICE
+  BUILDING_GROUNDS_MAINTENANCE
+  PERSONAL_CARE_SERVICE
+  SALES
+  OFFICE_ADMINISTRATIVE
+  FARMING_FISHING_FORESTRY
+  CONSTRUCTION
+  INSTALLATION_MAINTENANCE_REPAIR
+  PRODUCTION_MANUFACTURING
+  TRANSPORTATION_MATERIAL_MOVING
+  MILITARY_SPECIFIC
+  GIG_ECONOMY
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -319,6 +347,7 @@ model CandidateProfile {
   skills            String
   bio               String?
   availability      String
+  tags              TagCategory[]   @default([])
   createdAt         DateTime        @default(now())
 
   applications JobApplication[]
@@ -332,6 +361,7 @@ model JobPosting {
   description String
   location    String
   status      JobPostingStatus @default(OPEN)
+  tags        TagCategory[]    @default([])
   createdAt   DateTime         @default(now())
 
   applications JobApplication[]
