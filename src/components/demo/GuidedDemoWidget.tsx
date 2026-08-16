@@ -13,18 +13,28 @@ export function GuidedDemoWidget() {
   const [stepNumber, setStepNumber] = useState<number | null>(null);
   const [links, setLinks] = useState<ScenarioLinks | null>(null);
   const [linksError, setLinksError] = useState(false);
+  const [linksLoading, setLinksLoading] = useState(false);
   const [pending, setPending] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
   const headingRef = useRef<HTMLHeadingElement>(null);
+  const linksRequestedRef = useRef(false);
 
   useEffect(() => {
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) setStepNumber(Number(stored));
   }, []);
 
+  // Fetch scenario-links once, the first time a guided demo is actually in
+  // progress, and cache the result for the rest of the session — not on
+  // every step transition. This effect still depends on [stepNumber] so it
+  // fires promptly once a demo starts, but linksRequestedRef guards it so
+  // the request itself only ever goes out once.
   useEffect(() => {
     if (stepNumber === null) return;
+    if (linksRequestedRef.current) return;
+    linksRequestedRef.current = true;
     let cancelled = false;
+    setLinksLoading(true);
     fetch('/api/demo/scenario-links')
       .then((res) => {
         if (!res.ok) throw new Error('scenario-links request failed');
@@ -35,6 +45,9 @@ export function GuidedDemoWidget() {
       })
       .catch(() => {
         if (!cancelled) setLinksError(true);
+      })
+      .finally(() => {
+        if (!cancelled) setLinksLoading(false);
       });
     return () => {
       cancelled = true;
@@ -114,9 +127,9 @@ export function GuidedDemoWidget() {
         <Button
           type="button"
           onClick={() => (isLastStep ? exitDemo() : goToStep(stepNumber + 1))}
-          disabled={pending || linksError}
+          disabled={pending || linksError || linksLoading}
         >
-          {pending ? 'Working…' : currentStep.buttonLabel}
+          {pending ? 'Working…' : linksLoading ? 'Loading…' : currentStep.buttonLabel}
         </Button>
         <Button type="button" variant="secondary" onClick={exitDemo} disabled={pending}>
           Exit demo

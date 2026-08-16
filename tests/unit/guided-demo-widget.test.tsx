@@ -76,10 +76,11 @@ describe('GuidedDemoWidget', () => {
 
     fireEvent.click(screen.getByRole('button', { name: /Next: hire the candidate/i }));
 
-    await screen.findByText('Hire the candidate');
+    const heading = await screen.findByRole('heading', { name: 'Hire the candidate' });
     expect(signInMock).not.toHaveBeenCalled();
     expect(pushMock).not.toHaveBeenCalled();
     expect(sessionStorage.getItem('emplement-guided-demo-step')).toBe('3');
+    expect(document.activeElement).toBe(heading);
   });
 
   it('shows an error and does not advance when sign-in fails', async () => {
@@ -114,5 +115,38 @@ describe('GuidedDemoWidget', () => {
     render(<GuidedDemoWidget />);
     expect(await screen.findByText(/isn't available in this environment/i)).toBeInTheDocument();
     expect(screen.getByRole('button', { name: /Next: switch to the employer/i })).toBeDisabled();
+    expect(screen.getByRole('button', { name: /exit demo/i })).toBeEnabled();
+  });
+
+  it('fetches scenario-links exactly once across mount and a step transition', async () => {
+    mockLinksFetch();
+    sessionStorage.setItem('emplement-guided-demo-step', '2');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('See the interview confirmed');
+    expect(fetch).toHaveBeenCalledTimes(1);
+
+    fireEvent.click(screen.getByRole('button', { name: /Next: hire the candidate/i }));
+    await screen.findByText('Hire the candidate');
+
+    expect(fetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('disables the primary button while scenario-links is still loading', async () => {
+    let resolveFetch!: (value: Response) => void;
+    const fetchPromise = new Promise<Response>((resolve) => {
+      resolveFetch = resolve;
+    });
+    vi.mocked(fetch).mockReturnValue(fetchPromise);
+    sessionStorage.setItem('emplement-guided-demo-step', '1');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('Accept a proposed interview time');
+
+    expect(screen.getByRole('button', { name: /Next: switch to the employer|Loading/i })).toBeDisabled();
+
+    resolveFetch({ ok: true, json: async () => links } as Response);
+
+    await waitFor(() =>
+      expect(screen.getByRole('button', { name: /Next: switch to the employer/i })).toBeEnabled()
+    );
   });
 });
