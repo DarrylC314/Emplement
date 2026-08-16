@@ -18,6 +18,9 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
   let postingId: string;
   let applicationId: string;
   let otherApplicationId: string;
+  let thirdCandidateUserId: string | undefined;
+  let thirdClaimantProfileId: string | undefined;
+  let thirdApplicationId: string;
   const claimantSsn = '447-88-2211';
 
   beforeAll(async () => {
@@ -145,6 +148,52 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
     expect(events).toHaveLength(1);
   });
 
+  it('returns 409 hiring a still-PENDING application created after the posting was already FILLED, with no side effects', async () => {
+    // Create a brand-new application on the same posting *after* test 1
+    // already flipped the posting to FILLED. Nothing at the schema level
+    // stops a new PENDING application from being created against a FILLED
+    // posting — only the hire transaction's posting-level CAS gate
+    // (route.ts, tx.jobPosting.updateMany({ where: { status: 'OPEN' } }))
+    // enforces that. This is what actually exercises that gate: unlike the
+    // "other application" test above, this application's own status is
+    // still PENDING, so the route's pre-transaction
+    // `application.status !== 'PENDING'` short-circuit cannot fire — the
+    // 409 here can only come from inside the transaction.
+    const thirdUser = await prisma.user.create({
+      data: { email: `hire-claimant-3-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    thirdCandidateUserId = thirdUser.id;
+    const thirdClaimant = await prisma.claimantProfile.create({
+      data: { userId: thirdUser.id, ssnHash: `hire-test-hash-3-${Date.now()}`, identityVerificationStatus: 'VERIFIED' },
+    });
+    thirdClaimantProfileId = thirdClaimant.id;
+    const thirdCandidate = await prisma.candidateProfile.create({
+      data: { claimantProfileId: thirdClaimant.id, headline: 'Third candidate', skills: 'Various', availability: 'Now' },
+    });
+    const thirdApplication = await prisma.jobApplication.create({
+      data: { jobPostingId: postingId, candidateProfileId: thirdCandidate.id, initiatedBy: 'CANDIDATE', status: 'PENDING' },
+    });
+    thirdApplicationId = thirdApplication.id;
+
+    const posting = await prisma.jobPosting.findUnique({ where: { id: postingId } });
+    expect(posting?.status).toBe('FILLED');
+    expect(thirdApplication.status).toBe('PENDING');
+
+    const res = await hireApplication(
+      new Request(`http://localhost/api/employer/job-applications/${thirdApplicationId}/hire`, { method: 'POST' }),
+      { params: { id: thirdApplicationId } }
+    );
+    expect(res.status).toBe(409);
+
+    // No second EmploymentEvent was created — the transaction rolled back
+    // cleanly rather than partially applying.
+    const events = await prisma.employmentEvent.findMany({ where: { employerId: employerProfileId } });
+    expect(events).toHaveLength(1);
+
+    const application = await prisma.jobApplication.findUnique({ where: { id: thirdApplicationId } });
+    expect(application?.status).toBe('PENDING');
+  });
+
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { actorUserId: employerUserId } });
     await prisma.message.deleteMany({ where: { claimantId: claimantProfileId } });
@@ -160,6 +209,11 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
       await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: secondClaimant.id } });
       await prisma.claimantProfile.delete({ where: { id: secondClaimant.id } });
       await prisma.user.delete({ where: { id: secondClaimant.userId } });
+    }
+    if (thirdClaimantProfileId) {
+      await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: thirdClaimantProfileId } });
+      await prisma.claimantProfile.delete({ where: { id: thirdClaimantProfileId } });
+      await prisma.user.delete({ where: { id: thirdCandidateUserId } });
     }
     await prisma.employerProfile.delete({ where: { id: employerProfileId } });
     await prisma.user.delete({ where: { id: employerUserId } });
