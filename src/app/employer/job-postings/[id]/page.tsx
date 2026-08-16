@@ -1,0 +1,128 @@
+'use client';
+
+import { useEffect, useState } from 'react';
+import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui/Button';
+
+type Application = {
+  id: string;
+  status: 'PENDING' | 'HIRED' | 'REJECTED';
+  initiatedBy: 'CANDIDATE' | 'EMPLOYER';
+  createdAt: string;
+  candidateProfile: {
+    headline: string;
+    skills: string;
+    bio: string | null;
+    availability: string;
+  };
+};
+
+export default function JobPostingDetailPage({ params }: { params: { id: string } }) {
+  const { data: session, status } = useSession();
+  const [applications, setApplications] = useState<Application[] | null>(null);
+  const [loadError, setLoadError] = useState<string | null>(null);
+  const [actionError, setActionError] = useState<string | null>(null);
+  const [pendingId, setPendingId] = useState<string | null>(null);
+
+  async function loadApplications() {
+    setLoadError(null);
+    const res = await fetch(`/api/employer/job-postings/${params.id}/applications`);
+    if (!res.ok) {
+      setLoadError('We could not load applications for this posting. Please try again.');
+      return;
+    }
+    setApplications(await res.json());
+  }
+
+  useEffect(() => {
+    if (status !== 'authenticated' || session?.user.role !== 'EMPLOYER') return;
+    loadApplications();
+  }, [status, session?.user.role]);
+
+  async function handleReject(id: string) {
+    setActionError(null);
+    setPendingId(id);
+    try {
+      const res = await fetch(`/api/employer/job-applications/${id}/reject`, { method: 'POST' });
+      if (!res.ok) {
+        setActionError(
+          res.status === 409
+            ? 'This application was already resolved.'
+            : 'We could not reject this application. Please try again.'
+        );
+        if (res.status === 409) await loadApplications();
+        return;
+      }
+      await loadApplications();
+    } finally {
+      setPendingId(null);
+    }
+  }
+
+  if (status === 'loading') {
+    return (
+      <main id="main-content" className="max-w-3xl mx-auto p-8">
+        Loading…
+      </main>
+    );
+  }
+
+  if (status !== 'authenticated' || session?.user.role !== 'EMPLOYER') {
+    return (
+      <main id="main-content" className="max-w-3xl mx-auto p-8">
+        <h1 className="text-2xl font-bold mb-4">Applications</h1>
+        <p role="alert" className="text-error-text">
+          Sign in with an employer account to review applications.
+        </p>
+      </main>
+    );
+  }
+
+  return (
+    <main id="main-content" className="max-w-3xl mx-auto p-8">
+      <h1 className="text-2xl font-bold mb-4">Applications</h1>
+      {loadError && (
+        <p role="alert" className="mb-4 text-error-text">
+          {loadError}
+        </p>
+      )}
+      {actionError && (
+        <p role="alert" className="mb-4 text-error-text">
+          {actionError}
+        </p>
+      )}
+      {applications === null && !loadError && <p>Loading…</p>}
+      {applications !== null && applications.length === 0 && (
+        <p className="text-sm text-text-secondary">No applications for this posting yet.</p>
+      )}
+      {applications !== null && applications.length > 0 && (
+        <ul className="space-y-4">
+          {applications.map((a) => (
+            <li key={a.id} className="border border-border rounded p-4">
+              <p className="font-medium">{a.candidateProfile.headline}</p>
+              <p className="text-sm text-text-secondary mb-1">Skills: {a.candidateProfile.skills}</p>
+              <p className="text-sm text-text-secondary mb-2">Availability: {a.candidateProfile.availability}</p>
+              {a.status === 'PENDING' && (
+                <div className="flex gap-3">
+                  <Button disabled={pendingId === a.id} onClick={() => handleReject(a.id)} variant="secondary">
+                    Reject
+                  </Button>
+                </div>
+              )}
+              {a.status === 'HIRED' && (
+                <p role="status" className="text-status-active-text font-medium">
+                  ✓ Hired
+                </p>
+              )}
+              {a.status === 'REJECTED' && (
+                <p role="status" className="text-text-secondary font-medium">
+                  — Rejected
+                </p>
+              )}
+            </li>
+          ))}
+        </ul>
+      )}
+    </main>
+  );
+}
