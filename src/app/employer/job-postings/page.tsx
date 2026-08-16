@@ -4,8 +4,10 @@ import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
 import { TextField } from '@/components/ui/TextField';
+import { CheckboxGroup } from '@/components/ui/CheckboxGroup';
 import { Button } from '@/components/ui/Button';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { TAG_OPTIONS } from '@/lib/tagOptions';
 
 type JobPosting = {
   id: string;
@@ -23,6 +25,7 @@ export default function JobPostingsPage() {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
 
@@ -46,12 +49,13 @@ export default function JobPostingsPage() {
     setFieldErrors({});
     const res = await fetch('/api/employer/job-postings', {
       method: 'POST',
-      body: JSON.stringify({ title, description, location }),
+      body: JSON.stringify({ title, description, location, tags }),
     });
     if (res.ok) {
       setTitle('');
       setDescription('');
       setLocation('');
+      setTags([]);
       await loadPostings();
       return;
     }
@@ -102,6 +106,7 @@ export default function JobPostingsPage() {
           <TextField id="title" label="Title" value={title} onChange={setTitle} error={fieldErrors.title} required />
           <TextField id="description" label="Description" value={description} onChange={setDescription} error={fieldErrors.description} required />
           <TextField id="location" label="Location" value={location} onChange={setLocation} error={fieldErrors.location} required />
+          <CheckboxGroup legend="Tags (optional)" name="tags" options={TAG_OPTIONS} value={tags} onChange={setTags} error={fieldErrors.tags} />
           <Button type="submit">Post job</Button>
         </form>
       </section>

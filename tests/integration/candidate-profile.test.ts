@@ -80,6 +80,41 @@ describe('candidate profile routes', () => {
     expect(res.status).toBe(409);
   });
 
+  it('creates a candidate profile with tags', async () => {
+    const taggedUser = await prisma.user.create({
+      data: { email: `candidate-tagged-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    const taggedProfile = await prisma.claimantProfile.create({
+      data: {
+        userId: taggedUser.id,
+        ssnHash: `candidate-tagged-hash-${Date.now()}`,
+        identityVerificationStatus: 'VERIFIED',
+      },
+    });
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce({
+      user: { id: taggedUser.id, role: 'CLAIMANT', claimantProfileId: taggedProfile.id, email: taggedUser.email },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    const req = new Request('http://localhost/api/candidate-profile', {
+      method: 'POST',
+      body: JSON.stringify({
+        headline: 'Paramedic',
+        skills: 'Emergency response',
+        availability: 'On call',
+        tags: ['HEALTHCARE_PRACTITIONER', 'PROTECTIVE_SERVICE'],
+      }),
+    });
+    const res = await createProfile(req);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.tags).toEqual(['HEALTHCARE_PRACTITIONER', 'PROTECTIVE_SERVICE']);
+
+    await prisma.candidateProfile.delete({ where: { claimantProfileId: taggedProfile.id } });
+    await prisma.claimantProfile.delete({ where: { id: taggedProfile.id } });
+    await prisma.auditLog.deleteMany({ where: { actorUserId: taggedUser.id } });
+    await prisma.user.delete({ where: { id: taggedUser.id } });
+  });
+
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { actorUserId: { in: [verifiedUserId, unverifiedUserId] } } });
     await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: verifiedProfileId } });

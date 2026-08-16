@@ -65,6 +65,22 @@ describe('employer job posting routes', () => {
     expect(list[0].title).toBe('Warehouse associate');
   });
 
+  it('creates a job posting with tags', async () => {
+    const req = new Request('http://localhost/api/employer/job-postings', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Registered nurse',
+        description: 'ICU, night shift',
+        location: 'Columbia, MO',
+        tags: ['HEALTHCARE_PRACTITIONER'],
+      }),
+    });
+    const res = await createPosting(req);
+    expect(res.status).toBe(201);
+    const body = await res.json();
+    expect(body.tags).toEqual(['HEALTHCARE_PRACTITIONER']);
+  });
+
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { actorUserId: { in: [verifiedUserId, unverifiedUserId] } } });
     await prisma.jobPosting.deleteMany({ where: { employerId: verifiedProfileId } });

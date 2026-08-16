@@ -63,6 +63,7 @@ export async function POST(req: Request) {
       title: parsed.data.title,
       description: parsed.data.description,
       location: parsed.data.location,
+      tags: parsed.data.tags,
     },
   });
 

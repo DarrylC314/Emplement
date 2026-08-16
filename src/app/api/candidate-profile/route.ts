@@ -68,6 +68,7 @@ export async function POST(req: Request) {
         skills: parsed.data.skills,
         bio: parsed.data.bio,
         availability: parsed.data.availability,
+        tags: parsed.data.tags,
       },
     });
   } catch (err) {

@@ -3,8 +3,10 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { TextField } from '@/components/ui/TextField';
+import { CheckboxGroup } from '@/components/ui/CheckboxGroup';
 import { Button } from '@/components/ui/Button';
 import { ErrorSummary } from '@/components/ui/ErrorSummary';
+import { TAG_OPTIONS } from '@/lib/tagOptions';
 
 type CandidateProfile = {
   id: string;
@@ -22,6 +24,7 @@ export default function CandidateProfilePage() {
   const [skills, setSkills] = useState('');
   const [bio, setBio] = useState('');
   const [availability, setAvailability] = useState('');
+  const [tags, setTags] = useState<string[]>([]);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
 
@@ -39,7 +42,7 @@ export default function CandidateProfilePage() {
     setFieldErrors({});
     const res = await fetch('/api/candidate-profile', {
       method: 'POST',
-      body: JSON.stringify({ headline, skills, bio: bio || undefined, availability }),
+      body: JSON.stringify({ headline, skills, bio: bio || undefined, availability, tags }),
     });
     if (res.ok) {
       setProfile(await res.json());
@@ -116,6 +119,7 @@ export default function CandidateProfilePage() {
         <TextField id="skills" label="Skills" value={skills} onChange={setSkills} error={fieldErrors.skills} required />
         <TextField id="availability" label="Availability" value={availability} onChange={setAvailability} error={fieldErrors.availability} required />
         <TextField id="bio" label="Bio (optional)" value={bio} onChange={setBio} error={fieldErrors.bio} />
+        <CheckboxGroup legend="Tags (optional)" name="tags" options={TAG_OPTIONS} value={tags} onChange={setTags} error={fieldErrors.tags} />
         <Button type="submit">Save profile</Button>
       </form>
     </main>
