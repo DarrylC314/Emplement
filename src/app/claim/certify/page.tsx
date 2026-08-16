@@ -88,7 +88,7 @@ function CertifyForm() {
       source: 'marketplace',
       applicationId: a.id,
     }));
-    setActivities([...prefilled, ...activities.filter((a) => a.source === 'manual')]);
+    setActivities((prev) => [...prefilled, ...prev.filter((a) => a.source === 'manual')]);
   }
 
   async function handleSubmit(e: React.FormEvent) {
