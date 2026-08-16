@@ -12,6 +12,9 @@ export async function GET() {
   if (!access.ok) {
     return apiError('Unauthorized', access.status);
   }
+  if (!session!.user.claimantProfileId) {
+    return apiError('Claimant profile not found', 404);
+  }
 
   const profile = await prisma.candidateProfile.findUnique({
     where: { claimantProfileId: session!.user.claimantProfileId },

@@ -21,6 +21,10 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
   let thirdCandidateUserId: string | undefined;
   let thirdClaimantProfileId: string | undefined;
   let thirdApplicationId: string;
+  let employerInitiatedUserId: string | undefined;
+  let employerInitiatedClaimantProfileId: string | undefined;
+  let employerInitiatedPostingId: string | undefined;
+  let employerInitiatedApplicationId: string | undefined;
   const claimantSsn = '447-88-2211';
 
   beforeAll(async () => {
@@ -124,6 +128,53 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
       where: { targetEntity: 'JobApplication', targetId: applicationId, action: 'JOB_APPLICATION_HIRED' },
     });
     expect(log).not.toBeNull();
+    const metadata = log?.metadata as { autoRejectedCount?: number; restrictedClaimCount?: number } | null;
+    expect(metadata?.autoRejectedCount).toBe(1);
+    expect(metadata?.restrictedClaimCount).toBe(1);
+  });
+
+  it('returns 409 hiring an employer-initiated application, with no side effects', async () => {
+    const employerInitiatedUser = await prisma.user.create({
+      data: { email: `hire-claimant-outreach-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    employerInitiatedUserId = employerInitiatedUser.id;
+    const employerInitiatedClaimant = await prisma.claimantProfile.create({
+      data: {
+        userId: employerInitiatedUser.id,
+        legalName: 'Outreach Target',
+        ssnHash: `hire-test-hash-outreach-${Date.now()}`,
+        identityVerificationStatus: 'VERIFIED',
+      },
+    });
+    employerInitiatedClaimantProfileId = employerInitiatedClaimant.id;
+    const employerInitiatedCandidate = await prisma.candidateProfile.create({
+      data: { claimantProfileId: employerInitiatedClaimant.id, headline: 'Outreach candidate', skills: 'Various', availability: 'Now' },
+    });
+    const employerInitiatedPosting = await prisma.jobPosting.create({
+      data: { employerId: employerProfileId, title: 'Outreach posting', description: 'N/A', location: 'Rolla, MO' },
+    });
+    employerInitiatedPostingId = employerInitiatedPosting.id;
+    const employerInitiatedApplication = await prisma.jobApplication.create({
+      data: { jobPostingId: employerInitiatedPosting.id, candidateProfileId: employerInitiatedCandidate.id, initiatedBy: 'EMPLOYER' },
+    });
+    employerInitiatedApplicationId = employerInitiatedApplication.id;
+
+    const res = await hireApplication(
+      new Request(`http://localhost/api/employer/job-applications/${employerInitiatedApplicationId}/hire`, { method: 'POST' }),
+      { params: { id: employerInitiatedApplicationId } }
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/candidate-initiated/i);
+
+    const application = await prisma.jobApplication.findUnique({ where: { id: employerInitiatedApplicationId } });
+    expect(application?.status).toBe('PENDING');
+
+    const posting = await prisma.jobPosting.findUnique({ where: { id: employerInitiatedPostingId } });
+    expect(posting?.status).toBe('OPEN');
+
+    const event = await prisma.employmentEvent.findFirst({ where: { matchedClaimantProfileId: employerInitiatedClaimantProfileId } });
+    expect(event).toBeNull();
   });
 
   it('returns 409 hiring an already-resolved application', async () => {
@@ -214,6 +265,15 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
       await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: thirdClaimantProfileId } });
       await prisma.claimantProfile.delete({ where: { id: thirdClaimantProfileId } });
       await prisma.user.delete({ where: { id: thirdCandidateUserId } });
+    }
+    if (employerInitiatedPostingId) {
+      await prisma.jobApplication.deleteMany({ where: { jobPostingId: employerInitiatedPostingId } });
+      await prisma.jobPosting.delete({ where: { id: employerInitiatedPostingId } });
+    }
+    if (employerInitiatedClaimantProfileId) {
+      await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: employerInitiatedClaimantProfileId } });
+      await prisma.claimantProfile.delete({ where: { id: employerInitiatedClaimantProfileId } });
+      await prisma.user.delete({ where: { id: employerInitiatedUserId } });
     }
     await prisma.employerProfile.delete({ where: { id: employerProfileId } });
     await prisma.user.delete({ where: { id: employerUserId } });

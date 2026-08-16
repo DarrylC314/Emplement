@@ -9,6 +9,16 @@ export async function GET() {
   if (!access.ok) {
     return apiError('Unauthorized', access.status);
   }
+  if (!session!.user.employerProfileId) {
+    return apiError('Employer profile not found', 404);
+  }
+  const employerProfile = await prisma.employerProfile.findUnique({
+    where: { id: session!.user.employerProfileId },
+    select: { verificationStatus: true },
+  });
+  if (!employerProfile || employerProfile.verificationStatus !== 'VERIFIED') {
+    return apiError('Employer account is not verified', 403);
+  }
 
   const candidates = await prisma.candidateProfile.findMany({
     orderBy: { createdAt: 'desc' },

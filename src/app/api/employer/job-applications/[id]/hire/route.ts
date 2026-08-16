@@ -23,6 +23,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     where: { id: params.id },
     select: {
       status: true,
+      initiatedBy: true,
       jobPostingId: true,
       jobPosting: { select: { employerId: true } },
       candidateProfile: {
@@ -41,6 +42,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   }
   if (application.status !== 'PENDING') {
     return apiError('This application has already been resolved', 409);
+  }
+  if (application.initiatedBy !== 'CANDIDATE') {
+    return apiError('This application must be candidate-initiated before it can be hired', 409);
   }
   if (!application.candidateProfile.claimantProfile.ssnHash) {
     // Should be unreachable: candidate profile creation requires identity
@@ -83,7 +87,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         throw new ApplicationAlreadyResolvedError();
       }
 
-      await tx.jobApplication.updateMany({
+      const rejectedApplications = await tx.jobApplication.updateMany({
         where: { jobPostingId, status: 'PENDING' },
         data: { status: 'REJECTED' },
       });
@@ -99,7 +103,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         },
       });
 
-      await tx.claim.updateMany({
+      const restrictedClaims = await tx.claim.updateMany({
         where: { claimantId: claimantProfileId, status: 'ACTIVE' },
         data: { status: 'RESTRICTED' },
       });
@@ -113,7 +117,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
         },
       });
 
-      return { event, message };
+      return {
+        event,
+        message,
+        autoRejectedCount: rejectedApplications.count,
+        restrictedClaimCount: restrictedClaims.count,
+      };
     });
   } catch (err) {
     if (err instanceof ApplicationAlreadyResolvedError) {
@@ -127,7 +136,12 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
     action: 'JOB_APPLICATION_HIRED',
     targetEntity: 'JobApplication',
     targetId: params.id,
-    metadata: { employmentEventId: result.event.id, claimantProfileId },
+    metadata: {
+      employmentEventId: result.event.id,
+      claimantProfileId,
+      autoRejectedCount: result.autoRejectedCount,
+      restrictedClaimCount: result.restrictedClaimCount,
+    },
   });
 
   return Response.json({ id: params.id }, { status: 200 });

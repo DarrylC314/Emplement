@@ -13,6 +13,8 @@ describe('employer browse candidates and reach out', () => {
   let employerProfileId: string;
   let otherEmployerUserId: string;
   let otherEmployerProfileId: string;
+  let unverifiedEmployerUserId: string;
+  let unverifiedEmployerProfileId: string;
   let claimantUserId: string;
   let claimantProfileId: string;
   let candidateProfileId: string;
@@ -69,6 +71,24 @@ describe('employer browse candidates and reach out', () => {
       data: { claimantProfileId, headline: 'Retail associate', skills: 'POS systems', availability: 'Immediate' },
     });
     candidateProfileId = candidateProfile.id;
+
+    const unverifiedEmployerUser = await prisma.user.create({
+      data: { email: `outreach-unverified-employer-${Date.now()}@example.com`, passwordHash: 'x', role: 'EMPLOYER' },
+    });
+    unverifiedEmployerUserId = unverifiedEmployerUser.id;
+    const unverifiedEmployerProfile = await prisma.employerProfile.create({
+      data: { userId: unverifiedEmployerUser.id },
+    });
+    unverifiedEmployerProfileId = unverifiedEmployerProfile.id;
+  });
+
+  it('rejects browsing candidates for an unverified employer with 403', async () => {
+    vi.mocked(getServerAuthSession).mockResolvedValueOnce({
+      user: { id: unverifiedEmployerUserId, role: 'EMPLOYER', employerProfileId: unverifiedEmployerProfileId, email: 'unverified@example.com' },
+      expires: new Date(Date.now() + 3600_000).toISOString(),
+    });
+    const res = await listCandidates();
+    expect(res.status).toBe(403);
   });
 
   it('lists candidate profiles without leaking claimant PII', async () => {
@@ -116,6 +136,8 @@ describe('employer browse candidates and reach out', () => {
     await prisma.user.delete({ where: { id: employerUserId } });
     await prisma.employerProfile.delete({ where: { id: otherEmployerProfileId } });
     await prisma.user.delete({ where: { id: otherEmployerUserId } });
+    await prisma.employerProfile.delete({ where: { id: unverifiedEmployerProfileId } });
+    await prisma.user.delete({ where: { id: unverifiedEmployerUserId } });
     await prisma.$disconnect();
   });
 });
