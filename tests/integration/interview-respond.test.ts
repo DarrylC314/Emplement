@@ -161,6 +161,13 @@ describe('claimant interview responses and application list', () => {
     const interview = await prisma.interview.findUnique({ where: { id: interviewId } });
     expect(interview?.status).toBe('CONFIRMED');
     expect(interview?.confirmedSlot?.toISOString()).toBe(new Date('2026-09-01T14:00:00Z').toISOString());
+
+    const auditEntry = await prisma.auditLog.findFirst({
+      where: { actorUserId: claimantUserId, action: 'INTERVIEW_ACCEPTED' },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(auditEntry?.targetEntity).toBe('JobApplication');
+    expect(auditEntry?.targetId).toBe(applicationId);
   });
 
   it('rejects accepting again on an already-CONFIRMED interview with 409', async () => {
@@ -192,6 +199,13 @@ describe('claimant interview responses and application list', () => {
 
     const interview = await prisma.interview.findUnique({ where: { id: declineInterviewRow.id } });
     expect(interview?.status).toBe('DECLINED');
+
+    const auditEntry = await prisma.auditLog.findFirst({
+      where: { actorUserId: claimantUserId, action: 'INTERVIEW_DECLINED' },
+      orderBy: { timestamp: 'desc' },
+    });
+    expect(auditEntry?.targetEntity).toBe('JobApplication');
+    expect(auditEntry?.targetId).toBe(declineApplication.id);
 
     await prisma.interviewSlot.deleteMany({ where: { interviewId: declineInterviewRow.id } });
     await prisma.interview.delete({ where: { id: declineInterviewRow.id } });

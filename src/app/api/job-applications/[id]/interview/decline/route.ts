@@ -42,8 +42,9 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   await writeAuditLog({
     actorUserId: session!.user.id,
     action: 'INTERVIEW_DECLINED',
-    targetEntity: 'Interview',
-    targetId: application.interview.id,
+    targetEntity: 'JobApplication',
+    targetId: params.id,
+    metadata: { interviewId: application.interview.id },
   });
 
   return Response.json({ id: application.interview.id, status: 'DECLINED' }, { status: 200 });

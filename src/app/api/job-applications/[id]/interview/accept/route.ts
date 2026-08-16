@@ -54,9 +54,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   await writeAuditLog({
     actorUserId: session!.user.id,
     action: 'INTERVIEW_ACCEPTED',
-    targetEntity: 'Interview',
-    targetId: application.interview.id,
-    metadata: { slotId, confirmedSlot: slot.startTime },
+    targetEntity: 'JobApplication',
+    targetId: params.id,
+    metadata: { interviewId: application.interview.id, slotId, confirmedSlot: slot.startTime },
   });
 
   return Response.json({ id: application.interview.id, status: 'CONFIRMED' }, { status: 200 });
