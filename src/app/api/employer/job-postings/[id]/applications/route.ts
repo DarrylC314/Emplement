@@ -32,6 +32,15 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
       candidateProfile: {
         select: { headline: true, skills: true, bio: true, availability: true },
       },
+      interview: {
+        select: {
+          id: true,
+          status: true,
+          location: true,
+          confirmedSlot: true,
+          slots: { select: { id: true, startTime: true } },
+        },
+      },
     },
   });
 

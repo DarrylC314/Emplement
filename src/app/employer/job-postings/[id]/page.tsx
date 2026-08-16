@@ -3,6 +3,15 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
+import { TextField } from '@/components/ui/TextField';
+
+type Interview = {
+  id: string;
+  status: 'PROPOSED' | 'CONFIRMED' | 'DECLINED';
+  location: string | null;
+  confirmedSlot: string | null;
+  slots: { id: string; startTime: string }[];
+};
 
 type Application = {
   id: string;
@@ -15,6 +24,7 @@ type Application = {
     bio: string | null;
     availability: string;
   };
+  interview: Interview | null;
 };
 
 export default function JobPostingDetailPage({ params }: { params: { id: string } }) {
@@ -23,6 +33,12 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
   const [loadError, setLoadError] = useState<string | null>(null);
   const [actionError, setActionError] = useState<string | null>(null);
   const [pendingId, setPendingId] = useState<string | null>(null);
+  const [proposingId, setProposingId] = useState<string | null>(null);
+  const [slot1, setSlot1] = useState('');
+  const [slot2, setSlot2] = useState('');
+  const [slot3, setSlot3] = useState('');
+  const [interviewLocation, setInterviewLocation] = useState('');
+  const [proposeError, setProposeError] = useState<string | null>(null);
 
   async function loadApplications() {
     setLoadError(null);
@@ -79,6 +95,26 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
     }
   }
 
+  async function handlePropose(applicationId: string) {
+    setProposeError(null);
+    const slots = [slot1, slot2, slot3].filter((s) => s.trim() !== '');
+    const res = await fetch(`/api/employer/job-applications/${applicationId}/interview`, {
+      method: 'POST',
+      body: JSON.stringify({ slots, location: interviewLocation || undefined }),
+    });
+    if (!res.ok) {
+      const body = await res.json().catch(() => null);
+      setProposeError(body?.error ?? 'We could not propose interview times. Please try again.');
+      return;
+    }
+    setProposingId(null);
+    setSlot1('');
+    setSlot2('');
+    setSlot3('');
+    setInterviewLocation('');
+    await loadApplications();
+  }
+
   if (status === 'loading') {
     return (
       <main id="main-content" className="max-w-3xl mx-auto p-8">
@@ -123,7 +159,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
               <p className="text-sm text-text-secondary mb-1">Skills: {a.candidateProfile.skills}</p>
               <p className="text-sm text-text-secondary mb-2">Availability: {a.candidateProfile.availability}</p>
               {a.status === 'PENDING' && (
-                <div className="flex gap-3">
+                <div className="flex gap-3 mb-3">
                   <Button disabled={pendingId === a.id} onClick={() => handleHire(a.id)}>
                     Hire
                   </Button>
@@ -140,6 +176,67 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
               {a.status === 'REJECTED' && (
                 <p role="status" className="text-text-secondary font-medium">
                   — Rejected
+                </p>
+              )}
+
+              {(!a.interview || a.interview.status === 'DECLINED') && proposingId !== a.id && (
+                <Button variant="secondary" onClick={() => setProposingId(a.id)}>
+                  {a.interview?.status === 'DECLINED' ? 'Propose new interview times' : 'Propose interview'}
+                </Button>
+              )}
+              {proposingId === a.id && (
+                <div className="mt-3 border-t border-border pt-3">
+                  {proposeError && (
+                    <p role="alert" className="mb-2 text-error-text">
+                      {proposeError}
+                    </p>
+                  )}
+                  <TextField
+                    id={`slot1-${a.id}`}
+                    label="Slot 1"
+                    type="datetime-local"
+                    value={slot1}
+                    onChange={setSlot1}
+                    required
+                  />
+                  <TextField
+                    id={`slot2-${a.id}`}
+                    label="Slot 2"
+                    type="datetime-local"
+                    value={slot2}
+                    onChange={setSlot2}
+                    required
+                  />
+                  <TextField
+                    id={`slot3-${a.id}`}
+                    label="Slot 3 (optional)"
+                    type="datetime-local"
+                    value={slot3}
+                    onChange={setSlot3}
+                  />
+                  <TextField
+                    id={`location-${a.id}`}
+                    label="Location or video link (optional)"
+                    value={interviewLocation}
+                    onChange={setInterviewLocation}
+                  />
+                  <div className="flex gap-3">
+                    <Button onClick={() => handlePropose(a.id)}>Send proposal</Button>
+                    <Button variant="secondary" onClick={() => setProposingId(null)}>
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              )}
+              {a.interview?.status === 'PROPOSED' && (
+                <p role="status" className="text-sm text-text-secondary mt-2">
+                  Interview proposed, waiting for candidate response.
+                </p>
+              )}
+              {a.interview?.status === 'CONFIRMED' && (
+                <p role="status" className="text-status-active-text font-medium mt-2">
+                  ✓ Interview confirmed: {new Date(a.interview.confirmedSlot!).toLocaleString()}
+                  {a.interview.location && ` — ${a.interview.location}`}
                 </p>
               )}
             </li>
