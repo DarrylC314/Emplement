@@ -316,6 +316,61 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: claimantUser.id } });
   });
 
+  it('can create and read back an Interview with slots, and enforces one interview per application', async () => {
+    const claimantUser = await prisma.user.create({
+      data: { email: `schema-test-interview-claimant-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'CLAIMANT' },
+    });
+    const claimantProfile = await prisma.claimantProfile.create({
+      data: { userId: claimantUser.id, ssnHash: `schema-test-interview-hash-${Date.now()}` },
+    });
+    const candidateProfile = await prisma.candidateProfile.create({
+      data: { claimantProfileId: claimantProfile.id, headline: 'Test', skills: 'Test', availability: 'Test' },
+    });
+
+    const employerUser = await prisma.user.create({
+      data: { email: `schema-test-interview-employer-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'EMPLOYER' },
+    });
+    const employerProfile = await prisma.employerProfile.create({ data: { userId: employerUser.id } });
+    const jobPosting = await prisma.jobPosting.create({
+      data: { employerId: employerProfile.id, title: 'Test', description: 'Test', location: 'Test' },
+    });
+
+    const application = await prisma.jobApplication.create({
+      data: { jobPostingId: jobPosting.id, candidateProfileId: candidateProfile.id, initiatedBy: 'CANDIDATE' },
+    });
+
+    const interview = await prisma.interview.create({
+      data: {
+        jobApplicationId: application.id,
+        location: 'Video call',
+        slots: {
+          create: [
+            { startTime: new Date('2026-09-01T14:00:00Z') },
+            { startTime: new Date('2026-09-02T14:00:00Z') },
+          ],
+        },
+      },
+      include: { slots: true },
+    });
+    expect(interview.status).toBe('PROPOSED');
+    expect(interview.confirmedSlot).toBeNull();
+    expect(interview.slots).toHaveLength(2);
+
+    await expect(
+      prisma.interview.create({ data: { jobApplicationId: application.id } })
+    ).rejects.toThrow();
+
+    await prisma.interviewSlot.deleteMany({ where: { interviewId: interview.id } });
+    await prisma.interview.delete({ where: { id: interview.id } });
+    await prisma.jobApplication.delete({ where: { id: application.id } });
+    await prisma.jobPosting.delete({ where: { id: jobPosting.id } });
+    await prisma.candidateProfile.delete({ where: { id: candidateProfile.id } });
+    await prisma.employerProfile.delete({ where: { id: employerProfile.id } });
+    await prisma.user.delete({ where: { id: employerUser.id } });
+    await prisma.claimantProfile.delete({ where: { id: claimantProfile.id } });
+    await prisma.user.delete({ where: { id: claimantUser.id } });
+  });
+
   afterAll(async () => {
     await prisma.$disconnect();
   });

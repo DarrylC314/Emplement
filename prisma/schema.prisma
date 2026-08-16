@@ -117,6 +117,12 @@ enum TagCategory {
   GIG_ECONOMY
 }
 
+enum InterviewStatus {
+  PROPOSED
+  CONFIRMED
+  DECLINED
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -377,5 +383,27 @@ model JobApplication {
   status             ApplicationStatus    @default(PENDING)
   createdAt          DateTime             @default(now())
 
+  interview Interview?
+
   @@unique([jobPostingId, candidateProfileId])
+}
+
+model Interview {
+  id               String          @id @default(cuid())
+  jobApplicationId String          @unique
+  jobApplication   JobApplication  @relation(fields: [jobApplicationId], references: [id])
+  status           InterviewStatus @default(PROPOSED)
+  location         String?
+  confirmedSlot    DateTime?
+  createdAt        DateTime        @default(now())
+  updatedAt        DateTime        @updatedAt
+
+  slots InterviewSlot[]
+}
+
+model InterviewSlot {
+  id          String    @id @default(cuid())
+  interviewId String
+  interview   Interview @relation(fields: [interviewId], references: [id])
+  startTime   DateTime
 }
