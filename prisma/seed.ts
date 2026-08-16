@@ -227,15 +227,39 @@ async function main() {
   // show a visible claim-status change — see the second demo claimant below
   // for that story.
   const warehousePosting = postings[0]!;
-  const existingApplication = await prisma.jobApplication.findFirst({
-    where: { jobPostingId: warehousePosting.id, candidateProfileId: candidateProfile.id },
-  });
-  if (!existingApplication) {
-    await prisma.jobApplication.create({
+  const application1 =
+    (await prisma.jobApplication.findFirst({
+      where: { jobPostingId: warehousePosting.id, candidateProfileId: candidateProfile.id },
+    })) ??
+    (await prisma.jobApplication.create({
       data: {
         jobPostingId: warehousePosting.id,
         candidateProfileId: candidateProfile.id,
         initiatedBy: 'CANDIDATE',
+      },
+    }));
+
+  // This applicant's interview is already PROPOSED (not yet responded to),
+  // so both sides of the live interview-scheduling story are demonstrable
+  // without first having to manually walk through the propose step: the
+  // employer's job-posting page shows "waiting for candidate response",
+  // and claimant@example.com's My Applications page shows two proposed
+  // times ready to Accept — the interactive half of the demo.
+  const existingInterview1 = await prisma.interview.findUnique({
+    where: { jobApplicationId: application1.id },
+  });
+  if (!existingInterview1) {
+    await prisma.interview.create({
+      data: {
+        jobApplicationId: application1.id,
+        status: 'PROPOSED',
+        location: 'Riverbend Logistics Inc. — 4400 Freight Way, Jefferson City, MO',
+        slots: {
+          create: [
+            { startTime: new Date('2026-08-19T15:00:00Z') }, // 10:00 AM Central
+            { startTime: new Date('2026-08-20T19:00:00Z') }, // 2:00 PM Central
+          ],
+        },
       },
     });
   }
@@ -288,15 +312,43 @@ async function main() {
     },
   });
   const customerServicePosting = postings[1]!;
-  const existingApplication2 = await prisma.jobApplication.findFirst({
-    where: { jobPostingId: customerServicePosting.id, candidateProfileId: candidateProfile2.id },
-  });
-  if (!existingApplication2) {
-    await prisma.jobApplication.create({
+  const application2 =
+    (await prisma.jobApplication.findFirst({
+      where: { jobPostingId: customerServicePosting.id, candidateProfileId: candidateProfile2.id },
+    })) ??
+    (await prisma.jobApplication.create({
       data: {
         jobPostingId: customerServicePosting.id,
         candidateProfileId: candidateProfile2.id,
         initiatedBy: 'CANDIDATE',
+      },
+    }));
+
+  // This applicant's interview is already CONFIRMED (accepted), so the
+  // employer's job-posting page shows a confirmed date/time and a natural
+  // next action — Hire — completing the full story this second demo
+  // claimant exists for: apply -> interview scheduled -> accepted ->
+  // hired -> ACTIVE claim visibly flips to RESTRICTED. Hire/Reject stay
+  // fully independent of interview status by design (unchanged from the
+  // interview-scheduling spec) — this is a demo-narrative sequence, not a
+  // new dependency between the two.
+  const existingInterview2 = await prisma.interview.findUnique({
+    where: { jobApplicationId: application2.id },
+  });
+  if (!existingInterview2) {
+    const confirmedSlot = new Date('2026-08-18T14:00:00Z'); // 9:00 AM Central
+    await prisma.interview.create({
+      data: {
+        jobApplicationId: application2.id,
+        status: 'CONFIRMED',
+        confirmedSlot,
+        location: 'Video call — link sent by email after confirmation',
+        slots: {
+          create: [
+            { startTime: confirmedSlot },
+            { startTime: new Date('2026-08-18T18:00:00Z') }, // 1:00 PM Central, not chosen
+          ],
+        },
       },
     });
   }
@@ -321,9 +373,9 @@ async function main() {
   }
 
   console.log('Seed complete: caseworker@example.com / CaseworkerPass123');
-  console.log('Seed complete: claimant@example.com / ClaimantPass123 (has a flagged certification, claim already RESTRICTED)');
-  console.log('Seed complete: claimant2@example.com / Claimant2Pass123 (claim ACTIVE — hire this applicant to see it flip to RESTRICTED)');
-  console.log('Seed complete: employer@example.com / EmployerPass123 (has 3 postings and 2 applicants waiting)');
+  console.log('Seed complete: claimant@example.com / ClaimantPass123 (flagged certification, claim RESTRICTED; has a PROPOSED interview to Accept/Decline on My Applications)');
+  console.log('Seed complete: claimant2@example.com / Claimant2Pass123 (claim ACTIVE, interview already CONFIRMED — hire this applicant to see it flip to RESTRICTED)');
+  console.log('Seed complete: employer@example.com / EmployerPass123 (3 postings, 2 applicants — one interview proposed, one confirmed and ready to hire)');
 }
 
 main()
