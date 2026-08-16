@@ -25,6 +25,10 @@ describe('claimant interview responses and application list', () => {
   let slot2Id: string;
   let confirmedApplicationId: string;
   let confirmedInterviewId: string;
+  let resolvedPostingId: string;
+  let resolvedApplicationId: string;
+  let resolvedInterviewId: string;
+  let resolvedSlotId: string;
 
   beforeAll(async () => {
     const claimantUser = await prisma.user.create({
@@ -107,6 +111,28 @@ describe('claimant interview responses and application list', () => {
       },
     });
     confirmedInterviewId = confirmedInterview.id;
+
+    // Regression fixture for the "resolved application with a still-PROPOSED
+    // interview" bug: this mirrors what the hire route's auto-reject leaves
+    // behind when a different application on the same posting gets hired
+    // after this one already had an interview proposed.
+    const resolvedPosting = await prisma.jobPosting.create({
+      data: { employerId: employerProfileId, title: 'Respond posting (resolved)', description: 'N/A', location: 'Columbia, MO' },
+    });
+    resolvedPostingId = resolvedPosting.id;
+    const resolvedApplication = await prisma.jobApplication.create({
+      data: { jobPostingId: resolvedPostingId, candidateProfileId, initiatedBy: 'EMPLOYER', status: 'REJECTED' },
+    });
+    resolvedApplicationId = resolvedApplication.id;
+    const resolvedInterview = await prisma.interview.create({
+      data: {
+        jobApplicationId: resolvedApplicationId,
+        slots: { create: [{ startTime: new Date('2026-09-08T14:00:00Z') }] },
+      },
+      include: { slots: true },
+    });
+    resolvedInterviewId = resolvedInterview.id;
+    resolvedSlotId = resolvedInterview.slots[0]!.id;
   });
 
   it('rejects a claimant acting on another claimant\'s application with 403', async () => {
@@ -170,6 +196,28 @@ describe('claimant interview responses and application list', () => {
     expect(auditEntry?.targetId).toBe(applicationId);
   });
 
+  it('rejects accepting an interview on a REJECTED application with 409, without changing Interview.status', async () => {
+    const req = new Request(`http://localhost/api/job-applications/${resolvedApplicationId}/interview/accept`, {
+      method: 'POST',
+      body: JSON.stringify({ slotId: resolvedSlotId }),
+    });
+    const res = await acceptInterview(req, { params: { id: resolvedApplicationId } });
+    expect(res.status).toBe(409);
+
+    const interview = await prisma.interview.findUnique({ where: { id: resolvedInterviewId } });
+    expect(interview?.status).toBe('PROPOSED');
+    expect(interview?.confirmedSlot).toBeNull();
+  });
+
+  it('rejects declining an interview on a REJECTED application with 409, without changing Interview.status', async () => {
+    const req = new Request(`http://localhost/api/job-applications/${resolvedApplicationId}/interview/decline`, { method: 'POST' });
+    const res = await declineInterview(req, { params: { id: resolvedApplicationId } });
+    expect(res.status).toBe(409);
+
+    const interview = await prisma.interview.findUnique({ where: { id: resolvedInterviewId } });
+    expect(interview?.status).toBe('PROPOSED');
+  });
+
   it('rejects accepting again on an already-CONFIRMED interview with 409', async () => {
     const req = new Request(`http://localhost/api/job-applications/${applicationId}/interview/accept`, {
       method: 'POST',
@@ -215,11 +263,12 @@ describe('claimant interview responses and application list', () => {
 
   afterAll(async () => {
     await prisma.auditLog.deleteMany({ where: { actorUserId: { in: [claimantUserId, otherClaimantUserId] } } });
-    await prisma.interviewSlot.deleteMany({ where: { interviewId: { in: [interviewId, confirmedInterviewId] } } });
-    await prisma.interview.deleteMany({ where: { id: { in: [interviewId, confirmedInterviewId] } } });
+    await prisma.interviewSlot.deleteMany({ where: { interviewId: { in: [interviewId, confirmedInterviewId, resolvedInterviewId] } } });
+    await prisma.interview.deleteMany({ where: { id: { in: [interviewId, confirmedInterviewId, resolvedInterviewId] } } });
     await prisma.jobApplication.deleteMany({ where: { candidateProfileId } });
     await prisma.jobPosting.delete({ where: { id: postingId } });
     await prisma.jobPosting.delete({ where: { id: confirmedPostingId } });
+    await prisma.jobPosting.delete({ where: { id: resolvedPostingId } });
     await prisma.candidateProfile.delete({ where: { id: candidateProfileId } });
     await prisma.claimantProfile.delete({ where: { id: claimantProfileId } });
     await prisma.user.delete({ where: { id: claimantUserId } });

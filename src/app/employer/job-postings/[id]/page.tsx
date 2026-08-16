@@ -100,32 +100,37 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
     e.preventDefault();
     setProposeError(null);
     setProposeFieldErrors({});
-    const slots = [slot1, slot2, slot3].filter((s) => s.trim() !== '');
-    const res = await fetch(`/api/employer/job-applications/${applicationId}/interview`, {
-      method: 'POST',
-      body: JSON.stringify({ slots, location: interviewLocation || undefined }),
-    });
-    if (!res.ok) {
-      const body = await res.json().catch(() => null);
-      const zodFieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
-      if (zodFieldErrors) {
-        const nextFieldErrors: Record<string, string> = {};
-        for (const [field, messages] of Object.entries(zodFieldErrors)) {
-          if (!messages?.[0]) continue;
-          nextFieldErrors[field] = messages[0];
+    setPendingId(applicationId);
+    try {
+      const slots = [slot1, slot2, slot3].filter((s) => s.trim() !== '');
+      const res = await fetch(`/api/employer/job-applications/${applicationId}/interview`, {
+        method: 'POST',
+        body: JSON.stringify({ slots, location: interviewLocation || undefined }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        const zodFieldErrors: Record<string, string[]> | undefined = body?.errors?.fieldErrors;
+        if (zodFieldErrors) {
+          const nextFieldErrors: Record<string, string> = {};
+          for (const [field, messages] of Object.entries(zodFieldErrors)) {
+            if (!messages?.[0]) continue;
+            nextFieldErrors[field] = messages[0];
+          }
+          setProposeFieldErrors(nextFieldErrors);
+          return;
         }
-        setProposeFieldErrors(nextFieldErrors);
+        setProposeError(body?.error ?? 'We could not propose interview times. Please try again.');
         return;
       }
-      setProposeError(body?.error ?? 'We could not propose interview times. Please try again.');
-      return;
+      setProposingId(null);
+      setSlot1('');
+      setSlot2('');
+      setSlot3('');
+      setInterviewLocation('');
+      await loadApplications();
+    } finally {
+      setPendingId(null);
     }
-    setProposingId(null);
-    setSlot1('');
-    setSlot2('');
-    setSlot3('');
-    setInterviewLocation('');
-    await loadApplications();
   }
 
   if (status === 'loading') {
@@ -192,7 +197,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
                 </p>
               )}
 
-              {(!a.interview || a.interview.status === 'DECLINED') && proposingId !== a.id && (
+              {a.status === 'PENDING' && (!a.interview || a.interview.status === 'DECLINED') && proposingId !== a.id && (
                 <Button variant="secondary" onClick={() => setProposingId(a.id)}>
                   {a.interview?.status === 'DECLINED' ? 'Propose new interview times' : 'Propose interview'}
                 </Button>
@@ -239,7 +244,9 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
                       error={proposeFieldErrors.location}
                     />
                     <div className="flex gap-3">
-                      <Button type="submit">Send proposal</Button>
+                      <Button type="submit" disabled={pendingId === a.id}>
+                        Send proposal
+                      </Button>
                       <Button type="button" variant="secondary" onClick={() => setProposingId(null)}>
                         Cancel
                       </Button>

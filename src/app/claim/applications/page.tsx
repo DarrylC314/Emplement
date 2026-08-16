@@ -137,7 +137,7 @@ export default function MyApplicationsPage() {
                 </p>
               )}
 
-              {a.interview?.status === 'PROPOSED' && (
+              {a.status === 'PENDING' && a.interview?.status === 'PROPOSED' && (
                 <div className="mt-2 border-t border-border pt-2">
                   <p className="text-sm font-medium mb-2">Proposed interview times:</p>
                   <ul className="space-y-2 mb-2">

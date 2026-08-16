@@ -142,11 +142,16 @@ describe('POST /api/employer/job-applications/[id]/interview', () => {
     expect(res.status).toBe(409);
   });
 
-  it('allows re-proposing after the interview is DECLINED, replacing the slots', async () => {
+  it('allows re-proposing after the interview is DECLINED, replacing the slots and clearing the previous location', async () => {
     await prisma.interview.update({
       where: { jobApplicationId: applicationId },
       data: { status: 'DECLINED' },
     });
+
+    // Sanity check: the interview being re-proposed on has a location left
+    // over from the first proposal ('Video call', set above).
+    const beforeReproposeInterview = await prisma.interview.findUnique({ where: { jobApplicationId: applicationId } });
+    expect(beforeReproposeInterview?.location).toBe('Video call');
 
     const req = new Request(`http://localhost/api/employer/job-applications/${applicationId}/interview`, {
       method: 'POST',
@@ -161,6 +166,9 @@ describe('POST /api/employer/job-applications/[id]/interview', () => {
     });
     expect(interview?.status).toBe('PROPOSED');
     expect(interview?.slots).toHaveLength(3);
+    // The re-propose request omitted `location`, so the stale value from the
+    // previous proposal round must be cleared, not silently inherited.
+    expect(interview?.location).toBeNull();
   });
 
   afterAll(async () => {

@@ -21,6 +21,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
   const application = await prisma.jobApplication.findUnique({
     where: { id: params.id },
     select: {
+      status: true,
       candidateProfile: { select: { claimantProfileId: true } },
       interview: { select: { id: true, status: true, slots: { select: { id: true, startTime: true } } } },
     },
@@ -36,6 +37,9 @@ export async function POST(req: Request, { params }: { params: { id: string } })
 
   if (!application.interview || application.interview.status !== 'PROPOSED') {
     return apiError('This application has no interview proposal to respond to', 409);
+  }
+  if (application.status !== 'PENDING') {
+    return apiError('This application is no longer open', 409);
   }
 
   const slot = application.interview.slots.find((s) => s.id === slotId);

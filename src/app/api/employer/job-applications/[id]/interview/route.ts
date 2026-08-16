@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { proposeInterviewSchema } from '@/lib/validation/interview';
 import { writeAuditLog } from '@/lib/audit';
@@ -51,19 +52,26 @@ export async function POST(req: Request, { params }: { params: { id: string } })
       where: { id: application.interview.id },
       data: {
         status: 'PROPOSED',
-        location: parsed.data.location,
+        location: parsed.data.location ?? null,
         confirmedSlot: null,
         slots: { create: slotDates.map((startTime) => ({ startTime })) },
       },
     });
   } else {
-    interview = await prisma.interview.create({
-      data: {
-        jobApplicationId: params.id,
-        location: parsed.data.location,
-        slots: { create: slotDates.map((startTime) => ({ startTime })) },
-      },
-    });
+    try {
+      interview = await prisma.interview.create({
+        data: {
+          jobApplicationId: params.id,
+          location: parsed.data.location ?? null,
+          slots: { create: slotDates.map((startTime) => ({ startTime })) },
+        },
+      });
+    } catch (err) {
+      if (err instanceof Prisma.PrismaClientKnownRequestError && err.code === 'P2002') {
+        return apiError('This application already has an active interview', 409);
+      }
+      throw err;
+    }
   }
 
   await prisma.message.create({
