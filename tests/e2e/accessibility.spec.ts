@@ -210,6 +210,22 @@ test.describe('claimant pages', () => {
     await expect(page.getByText(/additional information needed/i)).toBeVisible();
     await expectNoViolations(page);
   });
+
+  test('/claim/candidate-profile has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/claim/candidate-profile');
+    await expect(page.getByRole('heading', { name: /candidate profile/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('/claim/browse-postings has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/claim/browse-postings');
+    await expect(page.getByRole('heading', { name: /job postings/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
 });
 
 test.describe('staff pages', () => {
@@ -268,6 +284,22 @@ test.describe('employer pages', () => {
     await page.goto('/employer/dashboard');
     await waitForHydration(page);
     await expect(page.getByRole('heading', { name: /employer dashboard/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('/employer/job-postings has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/employer/job-postings');
+    await expect(page.getByRole('heading', { name: /job postings/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('/employer/browse-candidates has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/employer/browse-candidates');
+    await expect(page.getByRole('heading', { name: /browse candidates/i })).toBeVisible();
     await expectNoViolations(page);
   });
 });
