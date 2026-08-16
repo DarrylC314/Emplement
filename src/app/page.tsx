@@ -12,16 +12,19 @@ const primaryLinkClasses =
 const secondaryLinkClasses =
   'rounded px-4 py-2 font-medium focus-visible:outline focus-visible:outline-2 bg-surface border border-border text-text-primary hover:bg-surface-alt';
 
-type DemoRole = 'claimant' | 'caseworker';
+type DemoRole = 'claimant' | 'caseworker' | 'employer';
 
 const DEMO_ACCOUNTS: Record<DemoRole, { email: string; password: string; dashboard: string }> = {
   claimant: { email: 'claimant@example.com', password: 'ClaimantPass123', dashboard: '/claim/dashboard' },
   caseworker: { email: 'caseworker@example.com', password: 'CaseworkerPass123', dashboard: '/staff/dashboard' },
+  employer: { email: 'employer@example.com', password: 'EmployerPass123', dashboard: '/employer/dashboard' },
 };
+
+const GUIDED_DEMO_STORAGE_KEY = 'emplement-guided-demo-step';
 
 export default function Home() {
   const router = useRouter();
-  const [pendingDemo, setPendingDemo] = useState<DemoRole | null>(null);
+  const [pendingDemo, setPendingDemo] = useState<DemoRole | 'guided' | null>(null);
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
 
   async function enterDemo(role: DemoRole) {
@@ -37,12 +40,37 @@ export default function Home() {
     router.push(dashboard);
   }
 
+  async function startGuidedDemo() {
+    setErrors([]);
+    setPendingDemo('guided');
+    const { email, password } = DEMO_ACCOUNTS.claimant;
+    const result = await signIn('credentials', { redirect: false, email, password });
+    if (result?.error) {
+      setErrors([{ id: 'demo', message: 'The demo login is temporarily unavailable. Please try again.' }]);
+      setPendingDemo(null);
+      return;
+    }
+    sessionStorage.setItem(GUIDED_DEMO_STORAGE_KEY, '1');
+    router.push('/claim/applications');
+  }
+
   return (
     <main id="main-content" className="max-w-2xl mx-auto p-8">
       <h1 className="text-2xl font-bold">Emplement</h1>
       <p className="mt-2 mb-8 text-text-secondary">
         Unemployment benefit claims — claimant and caseworker portals.
       </p>
+
+      <div className="mb-8 border border-border rounded p-4 bg-surface-alt">
+        <h2 className="font-medium mb-1">See the complete story</h2>
+        <p className="text-sm text-text-secondary mb-4">
+          Walk through one claimant&apos;s full journey — apply, schedule an interview, get hired, and see
+          their benefit claim react — across all three roles, guided step by step.
+        </p>
+        <Button type="button" onClick={startGuidedDemo} disabled={pendingDemo !== null}>
+          {pendingDemo === 'guided' ? 'Starting…' : 'Start Guided Demo'}
+        </Button>
+      </div>
 
       <ErrorSummary errors={errors} />
 
@@ -102,6 +130,14 @@ export default function Home() {
             <Link href="/employer/signup" className={secondaryLinkClasses}>
               Create an account
             </Link>
+            <Button
+              type="button"
+              variant="secondary"
+              onClick={() => enterDemo('employer')}
+              disabled={pendingDemo !== null}
+            >
+              {pendingDemo === 'employer' ? 'Entering demo…' : 'Enter Employer Demo'}
+            </Button>
           </div>
         </section>
       </div>

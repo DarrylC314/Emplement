@@ -5,6 +5,7 @@ import { SessionProvider } from 'next-auth/react';
 import { AppNav } from '@/components/layout/AppNav';
 import { SessionTimeoutWarning } from '@/components/layout/SessionTimeoutWarning';
 import { RouteFocusManager } from '@/components/layout/RouteFocusManager';
+import { GuidedDemoWidget } from '@/components/demo/GuidedDemoWidget';
 
 export function Providers({ children }: { children: React.ReactNode }) {
   useEffect(() => {
@@ -30,6 +31,7 @@ export function Providers({ children }: { children: React.ReactNode }) {
       <AppNav />
       {children}
       <SessionTimeoutWarning />
+      <GuidedDemoWidget />
     </SessionProvider>
   );
 }
