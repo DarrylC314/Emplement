@@ -62,6 +62,14 @@ function CertifyForm() {
   // handleWeekEndingDateBlur if a removal happens while its fetch is in
   // flight — the same class of bug already fixed once for `activities`.
   const removedApplicationIdsRef = useRef<Set<string>>(new Set());
+  // Guards against two overlapping blurs (e.g. the claimant quickly corrects
+  // a mistyped date and blurs again before the first fetch has resolved)
+  // applying their results out of order: whichever fetch resolves last would
+  // otherwise win regardless of which blur was actually more recent, so a
+  // slower response for a since-superseded date could overwrite the correct
+  // one. Incremented on every blur; a response only gets applied if it's
+  // still the most recently started one when it resolves.
+  const latestBlurRequestId = useRef(0);
 
   function updateActivity(index: number, field: keyof JobSearchEntry, value: string) {
     const next = [...activities];
@@ -103,9 +111,14 @@ function CertifyForm() {
   async function handleWeekEndingDateBlur() {
     const dateAtBlur = weekEndingDate;
     if (!dateAtBlur || isNaN(Date.parse(dateAtBlur))) return;
+    const requestId = ++latestBlurRequestId.current;
     const res = await fetch('/api/job-applications');
     if (!res.ok) return;
     const applications: MarketplaceApplication[] = await res.json();
+    // A newer blur started (and possibly already resolved) while this fetch
+    // was in flight — its result is stale, discard it rather than clobbering
+    // whatever the newer one already applied.
+    if (requestId !== latestBlurRequestId.current) return;
     const matches = filterApplicationsInWeek(applications, dateAtBlur).filter(
       (a) => !removedApplicationIdsRef.current.has(`${dateAtBlur}:${a.id}`)
     );
@@ -115,8 +128,9 @@ function CertifyForm() {
       contactMethod: 'Applied through Emplement marketplace',
       // Displayed via toLocaleDateString() below to match this app's
       // local-time date convention elsewhere; this stored value (used for
-      // the submitted contactDate) stays a UTC-sliced ISO date, matching
-      // filterApplicationsInWeek's own UTC window arithmetic.
+      // the submitted contactDate) stays a UTC-sliced ISO date. It's a
+      // display/storage format choice, independent of
+      // filterApplicationsInWeek's own (now local-time) window matching.
       contactDate: a.createdAt.slice(0, 10),
       position: a.jobPosting.title,
       source: 'marketplace',

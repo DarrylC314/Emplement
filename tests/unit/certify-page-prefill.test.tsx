@@ -156,4 +156,49 @@ describe('CertifyPage marketplace prefill', () => {
       expect(body.jobSearchActivities.every((a: { employerName: string }) => a.employerName)).toBe(true);
     });
   });
+
+  it('discards a stale prefill response when a newer blur has already resolved', async () => {
+    let resolveFirst: (value: Response) => void;
+    let resolveSecond: (value: Response) => void;
+    const firstFetch = new Promise<Response>((resolve) => {
+      resolveFirst = resolve;
+    });
+    const secondFetch = new Promise<Response>((resolve) => {
+      resolveSecond = resolve;
+    });
+
+    let jobApplicationsCallCount = 0;
+    vi.mocked(fetch).mockImplementation(async (input: RequestInfo | URL) => {
+      if (typeof input === 'string' && input === '/api/job-applications') {
+        jobApplicationsCallCount += 1;
+        return jobApplicationsCallCount === 1 ? firstFetch : secondFetch;
+      }
+      return { ok: true, json: async () => ({}) } as Response;
+    });
+
+    render(<CertifyPage />);
+    const dateField = screen.getByLabelText(/week ending date/i);
+
+    // First blur (date A) — its fetch will resolve LAST, after the second's.
+    fireEvent.change(dateField, { target: { value: '2026-08-15' } });
+    fireEvent.blur(dateField);
+    // Second blur (date B), e.g. the claimant quickly corrected a mistyped
+    // date — its fetch resolves FIRST.
+    fireEvent.change(dateField, { target: { value: '2026-08-16' } });
+    fireEvent.blur(dateField);
+
+    resolveSecond!({
+      ok: true,
+      json: async () => [application({ id: 'app-b', title: 'Customer Service Representative', companyName: 'Metro Health Partners' })],
+    } as Response);
+    await screen.findByText('Metro Health Partners');
+
+    // The first (older) request resolves after the newer one already
+    // applied its result — it must be discarded, not overwrite the screen.
+    resolveFirst!({ ok: true, json: async () => [application()] } as Response);
+    await waitFor(() => expect(fetch).toHaveBeenCalledTimes(2));
+
+    expect(screen.getByText('Metro Health Partners')).toBeInTheDocument();
+    expect(screen.queryByText('Riverbend Logistics Inc.')).not.toBeInTheDocument();
+  });
 });
