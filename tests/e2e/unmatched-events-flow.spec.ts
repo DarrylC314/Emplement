@@ -76,9 +76,13 @@ test('caseworker can see an unmatched event, manually match it, and see it on th
 
   await page.goto('/staff/unmatched-events');
   await waitForHydration(page);
-  await expect(page.getByText('Unmatched Flow Fixture Claimant').first()).toBeVisible();
+  // Scoped to this fixture's own row: seed data (Pat Reyes) also leaves an
+  // unmatched event on this page, so an unscoped .first() on "Manual match"
+  // can click the wrong row once more than one unmatched event exists.
+  const eventRow = page.getByRole('listitem').filter({ hasText: 'Unmatched Flow Fixture Claimant' });
+  await expect(eventRow).toBeVisible();
 
-  await page.getByRole('button', { name: 'Manual match' }).first().click();
+  await eventRow.getByRole('button', { name: 'Manual match' }).click();
   await page.getByLabel(/Social Security number/i).fill(matchSsn);
   await page.getByLabel(/Match notes/i).fill('Verified with the claimant directly by phone.');
   await page.getByRole('button', { name: 'Confirm match' }).click();
