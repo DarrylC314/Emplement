@@ -300,7 +300,7 @@ describe('runEmploymentExpirationCheck', () => {
       data: {
         userId: secondClaimantUser.id,
         legalName: 'Second Expiration Test Claimant',
-        ssnHash: hashSSN('488-22-9911'),
+        ssnHash: hashSSN(`488-22-${Math.floor(Math.random() * 9000 + 1000)}`),
         identityVerificationStatus: 'VERIFIED',
       },
     });
