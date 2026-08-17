@@ -180,7 +180,7 @@ describe('runEmploymentExpirationCheck', () => {
     await createDueHireEvent();
 
     const otherEmployerUser = await prisma.user.create({
-      data: { email: `expiration-other-employer-${Date.now()}@example.com`, passwordHash: 'x', role: 'EMPLOYER' },
+      data: { email: `expiration-other-employer-${Date.now()}-${Math.random()}@example.com`, passwordHash: 'x', role: 'EMPLOYER' },
     });
     const otherEmployerProfile = await prisma.employerProfile.create({
       data: { userId: otherEmployerUser.id, companyName: 'Other Active Employer LLC', verificationStatus: 'VERIFIED' },
@@ -246,7 +246,7 @@ describe('runEmploymentExpirationCheck', () => {
     await createDueHireEvent();
 
     const caseworker = await prisma.user.create({
-      data: { email: `expiration-caseworker-${Date.now()}@example.com`, passwordHash: 'x', role: 'CASEWORKER' },
+      data: { email: `expiration-caseworker-${Date.now()}-${Math.random()}@example.com`, passwordHash: 'x', role: 'CASEWORKER' },
     });
 
     await runEmploymentExpirationCheck({ source: 'SYSTEM_MANUAL_CHECK', userId: caseworker.id });
@@ -294,7 +294,7 @@ describe('runEmploymentExpirationCheck', () => {
     await createDueHireEvent();
 
     const secondClaimantUser = await prisma.user.create({
-      data: { email: `expiration-claimant-2-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+      data: { email: `expiration-claimant-2-${Date.now()}-${Math.random()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
     });
     const secondClaimantProfile = await prisma.claimantProfile.create({
       data: {

@@ -77,7 +77,7 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
         title: 'Hired posting',
         description: 'N/A',
         location: 'Rolla, MO',
-        expectedEndDate: new Date('2026-12-01T05:59:59.999Z'),
+        expectedEndDate: new Date('2099-01-01T00:00:00.000Z'),
       },
     });
     postingId = posting.id;
@@ -122,7 +122,7 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
     expect(event?.type).toBe('HIRE');
     expect(event?.ssnHash).toBe(hashSSN(claimantSsn));
     expect(event?.employerId).toBe(employerProfileId);
-    expect(event?.expectedEndDate?.toISOString()).toBe('2026-12-01T05:59:59.999Z');
+    expect(event?.expectedEndDate?.toISOString()).toBe('2099-01-01T00:00:00.000Z');
 
     const claim = await prisma.claim.findUnique({ where: { id: claimId } });
     expect(claim?.status).toBe('RESTRICTED');
