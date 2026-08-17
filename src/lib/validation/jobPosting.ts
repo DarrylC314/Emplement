@@ -6,6 +6,10 @@ export const jobPostingSchema = z.object({
   description: z.string().min(1, 'Description is required'),
   location: z.string().min(1, 'Location is required'),
   tags: z.array(z.enum(TAG_CATEGORY_VALUES)).optional().default([]),
+  expectedEndDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, 'Expected end date must be in YYYY-MM-DD format')
+    .optional(),
 });
 
 export type JobPostingInput = z.infer<typeof jobPostingSchema>;

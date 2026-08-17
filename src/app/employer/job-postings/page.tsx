@@ -14,6 +14,7 @@ type JobPosting = {
   title: string;
   description: string;
   location: string;
+  expectedEndDate: string | null;
   status: 'OPEN' | 'FILLED';
   createdAt: string;
 };
@@ -26,6 +27,7 @@ export default function JobPostingsPage() {
   const [description, setDescription] = useState('');
   const [location, setLocation] = useState('');
   const [tags, setTags] = useState<string[]>([]);
+  const [expectedEndDate, setExpectedEndDate] = useState('');
   const [errors, setErrors] = useState<{ id: string; message: string }[]>([]);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string | undefined>>({});
 
@@ -49,13 +51,14 @@ export default function JobPostingsPage() {
     setFieldErrors({});
     const res = await fetch('/api/employer/job-postings', {
       method: 'POST',
-      body: JSON.stringify({ title, description, location, tags }),
+      body: JSON.stringify({ title, description, location, tags, expectedEndDate: expectedEndDate || undefined }),
     });
     if (res.ok) {
       setTitle('');
       setDescription('');
       setLocation('');
       setTags([]);
+      setExpectedEndDate('');
       await loadPostings();
       return;
     }
@@ -107,6 +110,14 @@ export default function JobPostingsPage() {
           <TextField id="description" label="Description" value={description} onChange={setDescription} error={fieldErrors.description} required />
           <TextField id="location" label="Location" value={location} onChange={setLocation} error={fieldErrors.location} required />
           <CheckboxGroup legend="Tags (optional)" name="tags" options={TAG_OPTIONS} value={tags} onChange={setTags} error={fieldErrors.tags} />
+          <TextField
+            id="expectedEndDate"
+            label="Fixed-term or seasonal end date (optional)"
+            type="date"
+            value={expectedEndDate}
+            onChange={setExpectedEndDate}
+            error={fieldErrors.expectedEndDate}
+          />
           <Button type="submit">Post job</Button>
         </form>
       </section>
@@ -130,6 +141,11 @@ export default function JobPostingsPage() {
                 <p className="text-text-secondary mb-1">
                   {p.location} — {p.status === 'OPEN' ? 'Open' : 'Filled'}
                 </p>
+                {p.expectedEndDate && (
+                  <p className="text-text-secondary text-xs">
+                    Ends {new Date(p.expectedEndDate).toLocaleDateString(undefined, { timeZone: 'America/Chicago' })}
+                  </p>
+                )}
                 <Link href={`/employer/job-postings/${p.id}`} className="text-link underline">
                   View applications
                 </Link>

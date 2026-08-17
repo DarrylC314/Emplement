@@ -4,6 +4,7 @@ import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { centralTimeEndOfDayToUtc } from '@/lib/centralTime';
 
 export async function GET() {
   const session = await getServerAuthSession();
@@ -26,6 +27,7 @@ export async function GET() {
       status: true,
       tags: true,
       createdAt: true,
+      expectedEndDate: true,
     },
   });
 
@@ -65,6 +67,9 @@ export async function POST(req: Request) {
       description: parsed.data.description,
       location: parsed.data.location,
       tags: parsed.data.tags,
+      expectedEndDate: parsed.data.expectedEndDate
+        ? centralTimeEndOfDayToUtc(parsed.data.expectedEndDate)
+        : null,
     },
   });
 

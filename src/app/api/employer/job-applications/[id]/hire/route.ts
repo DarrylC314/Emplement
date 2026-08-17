@@ -25,7 +25,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
       status: true,
       initiatedBy: true,
       jobPostingId: true,
-      jobPosting: { select: { employerId: true } },
+      jobPosting: { select: { employerId: true, expectedEndDate: true } },
       candidateProfile: {
         select: {
           claimantProfileId: true,
@@ -58,6 +58,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const ssnHash = application.candidateProfile.claimantProfile.ssnHash;
   const jobPostingId = application.jobPostingId;
   const employerProfileId = session!.user.employerProfileId;
+  const expectedEndDate = application.jobPosting.expectedEndDate;
 
   let result;
   try {
@@ -99,6 +100,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
           employeeName: legalName,
           ssnHash,
           eventDate: new Date(),
+          expectedEndDate,
           matchedClaimantProfileId: claimantProfileId,
         },
       });

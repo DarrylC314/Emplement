@@ -72,7 +72,13 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
     claimId = claim.id;
 
     const posting = await prisma.jobPosting.create({
-      data: { employerId: employerProfileId, title: 'Hired posting', description: 'N/A', location: 'Rolla, MO' },
+      data: {
+        employerId: employerProfileId,
+        title: 'Hired posting',
+        description: 'N/A',
+        location: 'Rolla, MO',
+        expectedEndDate: new Date('2026-12-01T05:59:59.999Z'),
+      },
     });
     postingId = posting.id;
 
@@ -116,6 +122,7 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
     expect(event?.type).toBe('HIRE');
     expect(event?.ssnHash).toBe(hashSSN(claimantSsn));
     expect(event?.employerId).toBe(employerProfileId);
+    expect(event?.expectedEndDate?.toISOString()).toBe('2026-12-01T05:59:59.999Z');
 
     const claim = await prisma.claim.findUnique({ where: { id: claimId } });
     expect(claim?.status).toBe('RESTRICTED');
