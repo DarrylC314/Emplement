@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../src/lib/prisma';
 import { evaluateCertification } from '../src/lib/decisionEngine';
 import { hashSSN } from '../src/lib/ssnHash';
+import { encryptSSN } from '../src/lib/encryption';
 
 async function main() {
   const caseworkerPasswordHash = await bcrypt.hash('CaseworkerPass123', 12);
@@ -27,15 +28,9 @@ async function main() {
     },
   });
 
-  // ssnHash is backfilled via `update` (not the usual `update: {}`) because
-  // already-seeded environments — including this worktree's local dev
-  // database and production — already have a Seed Claimant row from before
-  // this field was required, and this field must be non-null for the
-  // guided demo's Hire step to succeed; a create-only fix would never reach
-  // that pre-existing row.
   const profile = await prisma.claimantProfile.upsert({
     where: { userId: claimantUser.id },
-    update: { ssnHash: hashSSN('247-01-3456') },
+    update: {},
     create: {
       userId: claimantUser.id,
       legalName: 'Seed Claimant',
@@ -43,6 +38,33 @@ async function main() {
       ssnHash: hashSSN('247-01-3456'),
     },
   });
+
+  // Backfill ssnEncrypted/ssnHash for already-seeded environments —
+  // including this worktree's local dev database and production — that
+  // already have a Seed Claimant row from before these fields were
+  // required, and ssnHash must be non-null for the guided demo's Hire step
+  // to succeed while ssnEncrypted must be set for the staff Reveal SSN form
+  // to work. The two are normally written together (mirroring
+  // src/app/api/identity-verification/callback/route.ts), but this checks
+  // each independently rather than gating both on ssnHash alone: an earlier
+  // version of this backfill (already run against some databases, including
+  // this worktree's local dev database, before this check existed) wrote
+  // ssnHash unconditionally without ever setting ssnEncrypted, so a
+  // ssnHash-only guard would permanently skip the ssnEncrypted backfill on
+  // those rows. Only backfilling what's actually unset means a real
+  // identity-verification run through this same profile is never silently
+  // reverted by a later re-seed, and a fake-hash collision with a real SSN
+  // can't abort the rest of the seed run with P2002.
+  const seedSsn = '247-01-3456';
+  const profileSsnBackfill: { ssnEncrypted?: string; ssnHash?: string } = {};
+  if (!profile.ssnEncrypted) profileSsnBackfill.ssnEncrypted = encryptSSN(seedSsn);
+  if (!profile.ssnHash) profileSsnBackfill.ssnHash = hashSSN(seedSsn);
+  if (Object.keys(profileSsnBackfill).length > 0) {
+    await prisma.claimantProfile.update({
+      where: { id: profile.id },
+      data: profileSsnBackfill,
+    });
+  }
 
   const existingClaim = await prisma.claim.findFirst({ where: { claimantId: profile.id } });
   const claim =
