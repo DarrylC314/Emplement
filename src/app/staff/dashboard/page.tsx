@@ -21,6 +21,15 @@ type ClaimantResult = {
   user: { email: string };
 };
 
+type ExpirationCheckSummary = {
+  recordsEvaluated: number;
+  separationsCreated: number;
+  claimsRetainedRestricted: number;
+  claimsSentToReevaluation: number;
+  claimsReactivated: number;
+  failures: { employmentEventId: string; error: string }[];
+};
+
 const PREFIX_LABELS: Record<NonNullable<ClaimantResult['prefix']>, string> = {
   MR: 'Mr.',
   MRS: 'Mrs.',
@@ -48,6 +57,24 @@ export default function StaffDashboardPage() {
   const [queue, setQueue] = useState<QueueItem[]>([]);
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<ClaimantResult[]>([]);
+  const [expirationSummary, setExpirationSummary] = useState<ExpirationCheckSummary | null>(null);
+  const [expirationRunning, setExpirationRunning] = useState(false);
+  const [expirationError, setExpirationError] = useState<string | null>(null);
+
+  async function handleRunExpirationCheck() {
+    setExpirationRunning(true);
+    setExpirationError(null);
+    try {
+      const res = await fetch('/api/staff/employment-expirations/run-check', { method: 'POST' });
+      if (!res.ok) {
+        setExpirationError('The expiration check could not be run. Please try again.');
+        return;
+      }
+      setExpirationSummary(await res.json());
+    } finally {
+      setExpirationRunning(false);
+    }
+  }
 
   useEffect(() => {
     fetch('/api/staff/queue')
@@ -90,6 +117,51 @@ export default function StaffDashboardPage() {
           </li>
         ))}
       </ul>
+
+      <section className="border border-border rounded p-4 mb-8">
+        <h2 className="font-medium mb-2">Employment expiration check</h2>
+        <p className="text-sm text-text-secondary mb-2">
+          Runs automatically on a schedule. Use this to run it now for a demo, or to catch up after a missed run.
+        </p>
+        <button
+          type="button"
+          onClick={handleRunExpirationCheck}
+          disabled={expirationRunning}
+          className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50"
+        >
+          {expirationRunning ? 'Running…' : 'Run expiration check now'}
+        </button>
+        {expirationError && (
+          <p role="alert" className="mt-2 text-error-text">
+            {expirationError}
+          </p>
+        )}
+        {expirationSummary && (
+          <dl className="mt-4 text-sm grid grid-cols-2 gap-x-4 gap-y-1 max-w-md">
+            <dt className="text-text-secondary">Evaluated</dt>
+            <dd>{expirationSummary.recordsEvaluated} evaluated</dd>
+            <dt className="text-text-secondary">Separations created</dt>
+            <dd>{expirationSummary.separationsCreated}</dd>
+            <dt className="text-text-secondary">Reactivated</dt>
+            <dd>{expirationSummary.claimsReactivated} reactivated</dd>
+            <dt className="text-text-secondary">Sent to reevaluation</dt>
+            <dd>{expirationSummary.claimsSentToReevaluation} sent to reevaluation</dd>
+            <dt className="text-text-secondary">Retained as restricted</dt>
+            <dd>{expirationSummary.claimsRetainedRestricted} retained as restricted</dd>
+            <dt className="text-text-secondary">Failures</dt>
+            <dd>{expirationSummary.failures.length} failure{expirationSummary.failures.length === 1 ? '' : 's'}</dd>
+          </dl>
+        )}
+        {expirationSummary && expirationSummary.failures.length > 0 && (
+          <ul className="mt-2 text-sm text-error-text space-y-1">
+            {expirationSummary.failures.map((f) => (
+              <li key={f.employmentEventId}>
+                {f.employmentEventId}: {f.error}
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
 
       <form
         onSubmit={handleSearch}
