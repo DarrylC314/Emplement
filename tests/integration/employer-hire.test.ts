@@ -25,6 +25,9 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
   let employerInitiatedClaimantProfileId: string | undefined;
   let employerInitiatedPostingId: string | undefined;
   let employerInitiatedApplicationId: string | undefined;
+  let lapsedTermUserId: string | undefined;
+  let lapsedTermClaimantProfileId: string | undefined;
+  let lapsedTermPostingId: string | undefined;
   const claimantSsn = '447-88-2211';
 
   beforeAll(async () => {
@@ -184,6 +187,61 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
     expect(event).toBeNull();
   });
 
+  it('returns 409 hiring an application whose posting\'s fixed term has already lapsed, with no side effects', async () => {
+    const lapsedTermUser = await prisma.user.create({
+      data: { email: `hire-claimant-lapsed-${Date.now()}@example.com`, passwordHash: 'x', role: 'CLAIMANT' },
+    });
+    lapsedTermUserId = lapsedTermUser.id;
+    const lapsedTermClaimant = await prisma.claimantProfile.create({
+      data: {
+        userId: lapsedTermUser.id,
+        legalName: 'Lapsed Term Target',
+        ssnHash: `hire-test-hash-lapsed-${Date.now()}`,
+        identityVerificationStatus: 'VERIFIED',
+      },
+    });
+    lapsedTermClaimantProfileId = lapsedTermClaimant.id;
+    const lapsedTermCandidate = await prisma.candidateProfile.create({
+      data: { claimantProfileId: lapsedTermClaimant.id, headline: 'Lapsed term candidate', skills: 'Various', availability: 'Now' },
+    });
+    // A posting whose fixed term ended in the past — the posting-creation
+    // validation (src/lib/validation/jobPosting.ts) only checks the date
+    // against "today" at creation time, so a posting created with a valid
+    // future date can still lapse before anyone is hired for it. Created
+    // directly via Prisma (bypassing that validation) to simulate exactly
+    // that: a posting that's since gone stale.
+    const lapsedTermPosting = await prisma.jobPosting.create({
+      data: {
+        employerId: employerProfileId,
+        title: 'Lapsed term posting',
+        description: 'N/A',
+        location: 'Rolla, MO',
+        expectedEndDate: new Date('2020-01-01T00:00:00.000Z'),
+      },
+    });
+    lapsedTermPostingId = lapsedTermPosting.id;
+    const lapsedTermApplication = await prisma.jobApplication.create({
+      data: { jobPostingId: lapsedTermPosting.id, candidateProfileId: lapsedTermCandidate.id, initiatedBy: 'CANDIDATE' },
+    });
+
+    const res = await hireApplication(
+      new Request(`http://localhost/api/employer/job-applications/${lapsedTermApplication.id}/hire`, { method: 'POST' }),
+      { params: { id: lapsedTermApplication.id } }
+    );
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/fixed term has already ended/i);
+
+    const application = await prisma.jobApplication.findUnique({ where: { id: lapsedTermApplication.id } });
+    expect(application?.status).toBe('PENDING');
+
+    const posting = await prisma.jobPosting.findUnique({ where: { id: lapsedTermPostingId } });
+    expect(posting?.status).toBe('OPEN');
+
+    const event = await prisma.employmentEvent.findFirst({ where: { matchedClaimantProfileId: lapsedTermClaimantProfileId } });
+    expect(event).toBeNull();
+  });
+
   it('returns 409 hiring an already-resolved application', async () => {
     const res = await hireApplication(
       new Request(`http://localhost/api/employer/job-applications/${applicationId}/hire`, { method: 'POST' }),
@@ -281,6 +339,15 @@ describe('POST /api/employer/job-applications/[id]/hire', () => {
       await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: employerInitiatedClaimantProfileId } });
       await prisma.claimantProfile.delete({ where: { id: employerInitiatedClaimantProfileId } });
       await prisma.user.delete({ where: { id: employerInitiatedUserId } });
+    }
+    if (lapsedTermPostingId) {
+      await prisma.jobApplication.deleteMany({ where: { jobPostingId: lapsedTermPostingId } });
+      await prisma.jobPosting.delete({ where: { id: lapsedTermPostingId } });
+    }
+    if (lapsedTermClaimantProfileId) {
+      await prisma.candidateProfile.deleteMany({ where: { claimantProfileId: lapsedTermClaimantProfileId } });
+      await prisma.claimantProfile.delete({ where: { id: lapsedTermClaimantProfileId } });
+      await prisma.user.delete({ where: { id: lapsedTermUserId } });
     }
     await prisma.employerProfile.delete({ where: { id: employerProfileId } });
     await prisma.user.delete({ where: { id: employerUserId } });

@@ -315,6 +315,32 @@ for any event whose transaction threw, without stopping the loop.
   check(s)>", or "Claim remains restricted — still employed at
   <other employer>". Mirrors the existing "Claim automatically restricted"
   synthesized-entry pattern.
+- **`POST /api/demo/reset`**: also deletes the `JOB_APPLICATION_HIRED`
+  `AuditLog` entry for the guided demo's own application. That entry is
+  what `buildClaimantTimeline` reads to synthesize "Claim automatically
+  restricted" — left behind after a reset, it showed a stale restricted
+  story next to a claim reset had already put back to `ACTIVE`, with no
+  corresponding "Hired" entry (the `EmploymentEvent` is already deleted by
+  reset). This is a narrow exception to that route's general "audit logs
+  are a permanent record, left alone" rule, made specifically because this
+  feature's timeline now reads that entry — see the route's own comment.
+
+## Validation: fixed-term end date cannot precede the start it describes
+
+Two checks, at the two points a fixed-term end date could otherwise predate
+the thing it's meant to end:
+
+- **At posting creation** (`src/lib/validation/jobPosting.ts`): the Zod
+  schema rejects an `expectedEndDate` earlier than "today" in Central Time
+  — a posting's effective start is the day it's created, so a fixed term
+  ending before that is never valid input.
+- **At hire time** (`src/app/api/employer/job-applications/[id]/hire/route.ts`):
+  a posting can sit open for a while after creation, so its `expectedEndDate`
+  can lapse before anyone is actually hired for it, even though it passed
+  the creation-time check. The hire route rejects (`409`) hiring into a
+  posting whose `expectedEndDate` (if set) is already before the hire's own
+  moment (the employment's actual start) — a posting cannot be filled after
+  its fixed term has already ended.
 
 ## Error handling
 

@@ -7,9 +7,17 @@ import { apiError } from '@/lib/apiRequest';
 // /api/employer/job-applications/[id]/hire) steps can mutate for Seed
 // Claimant's Warehouse Associate application, so the guided demo is
 // replayable. Not a general-purpose undo tool — scoped to this one
-// walkthrough's own records. AuditLog rows are deliberately left alone:
-// an appropriate permanent record even in a demo, and nothing in the
-// walkthrough's own visibility depends on their absence.
+// walkthrough's own records.
+//
+// AuditLog rows are left alone in general (an appropriate permanent
+// record even in a demo) EXCEPT the JOB_APPLICATION_HIRED entry: the
+// staff case-page timeline (buildClaimantTimeline) synthesizes a "Claim
+// automatically restricted" entry from that entry's own metadata, so
+// leaving it behind after reset showed a stale "restricted" story
+// alongside no "Hired" entry (the HIRE EmploymentEvent below is deleted)
+// and a claim that's back to ACTIVE — an inconsistent, confusing state.
+// Deleting it here keeps the reset claim's story consistent with its
+// reverted status.
 export async function POST() {
   const session = await getServerAuthSession();
   if (!session) {
@@ -76,6 +84,10 @@ export async function POST() {
 
   await prisma.message.deleteMany({
     where: { claimantId: claimantProfile.id, subject: 'Your claim status has changed' },
+  });
+
+  await prisma.auditLog.deleteMany({
+    where: { action: 'JOB_APPLICATION_HIRED', targetEntity: 'JobApplication', targetId: application.id },
   });
 
   return Response.json({ reset: true });

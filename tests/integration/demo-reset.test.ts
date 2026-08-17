@@ -12,6 +12,7 @@ describe('POST /api/demo/reset', () => {
   let claimantUserId: string;
   let claimantProfileId: string;
   let claimId: string;
+  let employerUserId: string;
   let employerProfileId: string;
   let postingId: string;
   let applicationId: string;
@@ -52,6 +53,7 @@ describe('POST /api/demo/reset', () => {
       update: {},
       create: { email: 'employer@example.com', passwordHash: 'x', role: 'EMPLOYER' },
     });
+    employerUserId = employerUser.id;
     const employerProfile = await prisma.employerProfile.upsert({
       where: { userId: employerUser.id },
       update: {},
@@ -139,6 +141,15 @@ describe('POST /api/demo/reset', () => {
         body: 'Your claim status was updated to Restricted because you were hired through the Emplement marketplace.',
       },
     });
+    await prisma.auditLog.create({
+      data: {
+        actorUserId: employerUserId,
+        action: 'JOB_APPLICATION_HIRED',
+        targetEntity: 'JobApplication',
+        targetId: applicationId,
+        metadata: { restrictedClaimCount: 1 },
+      },
+    });
 
     const res = await resetDemo();
     expect(res.status).toBe(200);
@@ -165,6 +176,17 @@ describe('POST /api/demo/reset', () => {
       where: { claimantId: claimantProfileId, subject: 'Your claim status has changed' },
     });
     expect(message).toBeNull();
+
+    // The JOB_APPLICATION_HIRED audit entry is what the staff case-page
+    // timeline reads to synthesize "Claim automatically restricted" — left
+    // behind, it would show that stale text next to a claim that reset just
+    // put back to ACTIVE, with no corresponding "Hired" entry (the
+    // EmploymentEvent above was deleted). Reset removes it so the timeline
+    // stays consistent with the reverted state.
+    const hireAuditLog = await prisma.auditLog.findFirst({
+      where: { action: 'JOB_APPLICATION_HIRED', targetEntity: 'JobApplication', targetId: applicationId },
+    });
+    expect(hireAuditLog).toBeNull();
   });
 
   it('returns 401 when not authenticated', async () => {

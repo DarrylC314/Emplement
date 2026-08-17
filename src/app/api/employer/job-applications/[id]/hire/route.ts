@@ -59,6 +59,16 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
   const jobPostingId = application.jobPostingId;
   const employerProfileId = session!.user.employerProfileId;
   const expectedEndDate = application.jobPosting.expectedEndDate;
+  const hireDate = new Date();
+
+  // The posting's own fixed-term end date is validated against the
+  // posting's start date at creation time (src/lib/validation/jobPosting.ts),
+  // but a posting can sit open for a while before anyone is actually hired
+  // — this catches a fixed term that has since lapsed before the employment
+  // it describes would even begin, which the earlier check can't see.
+  if (expectedEndDate && expectedEndDate < hireDate) {
+    return apiError('This posting\'s fixed term has already ended and can no longer be filled.', 409);
+  }
 
   let result;
   try {
@@ -99,7 +109,7 @@ export async function POST(_req: Request, { params }: { params: { id: string } }
           type: 'HIRE',
           employeeName: legalName,
           ssnHash,
-          eventDate: new Date(),
+          eventDate: hireDate,
           expectedEndDate,
           matchedClaimantProfileId: claimantProfileId,
         },

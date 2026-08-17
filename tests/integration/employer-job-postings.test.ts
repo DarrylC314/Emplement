@@ -102,6 +102,22 @@ describe('employer job posting routes', () => {
     expect(body.expectedEndDate).toBe('2026-12-01T05:59:59.999Z');
   });
 
+  it('rejects a fixed-term end date that precedes the posting\'s start date (today)', async () => {
+    const req = new Request('http://localhost/api/employer/job-postings', {
+      method: 'POST',
+      body: JSON.stringify({
+        title: 'Backdated posting',
+        description: 'Should be rejected',
+        location: 'Rolla, MO',
+        expectedEndDate: '2020-01-01',
+      }),
+    });
+    const res = await createPosting(req);
+    expect(res.status).toBe(400);
+    const body = await res.json();
+    expect(body.errors.fieldErrors.expectedEndDate[0]).toMatch(/cannot be before/i);
+  });
+
   it('creates a job posting with no fixed-term end date when omitted', async () => {
     const req = new Request('http://localhost/api/employer/job-postings', {
       method: 'POST',
