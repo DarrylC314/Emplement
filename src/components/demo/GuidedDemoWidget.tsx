@@ -1,10 +1,71 @@
 'use client';
 
 import { useEffect, useRef, useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { signIn, getSession } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
-import { DEMO_STEPS, DEMO_ACCOUNT_CREDENTIALS, type ScenarioLinks } from '@/lib/demoScenario';
+import {
+  DEMO_STEPS,
+  DEMO_ACCOUNT_CREDENTIALS,
+  DEMO_ROLE_SESSION_VALUE,
+  type ScenarioLinks,
+  type DemoStep,
+} from '@/lib/demoScenario';
+
+// After signIn() resolves, next-auth's client-side session context can take
+// a beat to actually propagate to every useSession() consumer — the
+// signIn() promise resolving only means the credentials were accepted, not
+// that every already-rendered page has re-rendered under the new session
+// yet. Navigating immediately on that assumption is exactly the race that
+// produced a real bug: switching to the caseworker from step 4 sometimes
+// left the still-mounted /claim/dashboard (a CLAIMANT-only page) rendering
+// its "wrong role" error under the stale session, without ever completing
+// the navigation away from it. getSession() bypasses the client cache
+// entirely and asks the server directly, so waiting on it — rather than on
+// signIn()'s own promise — is a genuine confirmation the new role is live
+// before router.push() is called.
+async function waitForSessionRole(expectedRole: string, maxAttempts = 10, delayMs = 300): Promise<boolean> {
+  for (let attempt = 0; attempt < maxAttempts; attempt++) {
+    const session = await getSession();
+    if (session?.user && (session.user as { role?: string }).role === expectedRole) {
+      return true;
+    }
+    await new Promise((resolve) => setTimeout(resolve, delayMs));
+  }
+  return false;
+}
+
+// Steps 1 and 3 each require a real action on the underlying page (Accept,
+// Hire) before the story that step's "Next" button promises is actually
+// true. Checked once, at click time, against the same data the relevant
+// page itself reads — not continuously polled. A failed check here (e.g. a
+// transient network error) never blocks advancing: verification is a
+// courtesy that catches the common case of clicking ahead of the actual
+// action, not a hard gate this demo tool depends on.
+async function findIncompleteStepMessage(step: DemoStep, links: ScenarioLinks | null): Promise<string | null> {
+  if (step.step === 1) {
+    const res = await fetch('/api/job-applications');
+    if (!res.ok) return null;
+    const applications: { jobPosting: { title: string }; interview: { status: string } | null }[] =
+      await res.json();
+    const warehouseApplication = applications.find((a) => a.jobPosting.title === 'Warehouse Associate');
+    if (warehouseApplication?.interview?.status !== 'CONFIRMED') {
+      return 'Not yet — accept one of the proposed interview times above before continuing.';
+    }
+    return null;
+  }
+  if (step.step === 3) {
+    if (!links) return null;
+    const res = await fetch(`/api/employer/job-postings/${links.warehousePostingId}/applications`);
+    if (!res.ok) return null;
+    const applications: { status: string }[] = await res.json();
+    if (!applications.some((a) => a.status === 'HIRED')) {
+      return 'Not yet — click Hire above before continuing.';
+    }
+    return null;
+  }
+  return null;
+}
 
 const STORAGE_KEY = 'emplement-guided-demo-step';
 
@@ -74,12 +135,22 @@ export function GuidedDemoWidget() {
     setTransitionError(null);
     setPending(true);
     try {
+      const incompleteMessage = await findIncompleteStepMessage(currentStep, links);
+      if (incompleteMessage) {
+        setTransitionError(incompleteMessage);
+        return;
+      }
       const roleChanging = nextStep.role !== currentStep.role;
       if (roleChanging) {
         const { email, password } = DEMO_ACCOUNT_CREDENTIALS[nextStep.role];
         const result = await signIn('credentials', { redirect: false, email, password });
         if (result?.error) {
           setTransitionError('The demo login is temporarily unavailable. Please try again.');
+          return;
+        }
+        const roleVerified = await waitForSessionRole(DEMO_ROLE_SESSION_VALUE[nextStep.role]);
+        if (!roleVerified) {
+          setTransitionError('Signed in, but the new session hasn’t taken effect yet. Please try again.');
           return;
         }
       }

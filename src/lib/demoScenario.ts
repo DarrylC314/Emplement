@@ -23,6 +23,15 @@ export const DEMO_ACCOUNT_CREDENTIALS: Record<DemoRole, { email: string; passwor
   caseworker: { email: 'caseworker@example.com', password: 'CaseworkerPass123' },
 };
 
+// The session's own role field, distinct from DemoRole: NextAuth stores
+// roles uppercase (matching the Prisma enum), while DemoRole is this
+// module's own lowercase step-authoring vocabulary.
+export const DEMO_ROLE_SESSION_VALUE: Record<DemoRole, 'CLAIMANT' | 'EMPLOYER' | 'CASEWORKER'> = {
+  claimant: 'CLAIMANT',
+  employer: 'EMPLOYER',
+  caseworker: 'CASEWORKER',
+};
+
 export const DEMO_STEPS: DemoStep[] = [
   {
     step: 1,
