@@ -33,7 +33,13 @@ export default function DemoToolsPage() {
     setResetResult(null);
     setPending(true);
     try {
-      const res = await fetch('/api/demo/reset', { method: 'POST' });
+      let res: Response;
+      try {
+        res = await fetch('/api/demo/reset', { method: 'POST' });
+      } catch {
+        setResetResult('We could not reset the guided demo data. Please check your connection and try again.');
+        return;
+      }
       const body = await res.json().catch(() => null);
       if (!res.ok) {
         setResetResult(body?.error ?? 'Reset failed. Please try again.');
