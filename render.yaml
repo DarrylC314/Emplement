@@ -1,0 +1,17 @@
+# Render Blueprint: defines the scheduled job that runs the employment
+# expiration check unattended. This file declares the service as code, but
+# connecting/enabling it against this repo's Render account is a manual,
+# one-time step in the Render dashboard (Blueprints -> New Blueprint
+# Instance), the same kind of operational step the original Neon/Render
+# provisioning for this app was.
+services:
+  - type: cron
+    name: employment-expiration-check
+    runtime: node
+    plan: starter
+    schedule: "0 12 * * *" # Daily at 12:00 UTC (06:00 or 07:00 Central, depending on DST)
+    buildCommand: npm install
+    startCommand: npm run check:employment-expirations
+    envVars:
+      - key: DATABASE_URL
+        sync: false

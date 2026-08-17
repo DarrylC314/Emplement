@@ -15,7 +15,8 @@
     "db:migrate": "prisma migrate dev",
     "db:generate": "prisma generate",
     "db:seed": "tsx prisma/seed.ts",
-    "db:backfill-ssn-hash": "tsx prisma/backfillSsnHash.ts"
+    "db:backfill-ssn-hash": "tsx prisma/backfillSsnHash.ts",
+    "check:employment-expirations": "tsx prisma/checkEmploymentExpirations.ts"
   },
   "dependencies": {
     "next": "14.2.5",
