@@ -144,7 +144,7 @@ model CredentialRecord {
   eventDate                DateTime
   detailsSchemaVersion     Int                        @default(1)
   details                  Json
-  ssnHash                  String
+  ssnHash                  String?
   matchedClaimantProfileId String?
   matchedClaimantProfile   ClaimantProfile?           @relation(fields: [matchedClaimantProfileId], references: [id])
   reportedVia              CredentialReportingMethod
