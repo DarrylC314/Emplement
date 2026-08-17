@@ -3,13 +3,15 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, fireEvent, waitFor } from '@testing-library/react';
 import { GuidedDemoWidget } from '@/components/demo/GuidedDemoWidget';
 
-const { pushMock, signInMock } = vi.hoisted(() => ({
+const { pushMock, signInMock, pathnameMock } = vi.hoisted(() => ({
   pushMock: vi.fn(),
   signInMock: vi.fn(),
+  pathnameMock: vi.fn(() => '/'),
 }));
 
 vi.mock('next/navigation', () => ({
   useRouter: () => ({ push: pushMock }),
+  usePathname: () => pathnameMock(),
 }));
 
 vi.mock('next-auth/react', () => ({
@@ -28,6 +30,8 @@ describe('GuidedDemoWidget', () => {
     pushMock.mockClear();
     signInMock.mockReset();
     signInMock.mockResolvedValue({ error: undefined });
+    pathnameMock.mockReset();
+    pathnameMock.mockReturnValue('/');
     vi.stubGlobal('fetch', vi.fn());
   });
 
@@ -214,5 +218,26 @@ describe('GuidedDemoWidget', () => {
 
     expect(consoleErrorSpy).not.toHaveBeenCalled();
     consoleErrorSpy.mockRestore();
+  });
+
+  it('picks up a sessionStorage step written after mount once the route changes', async () => {
+    // Regression test: the widget is mounted once, globally, in
+    // providers.tsx and never remounts across client-side navigation. A
+    // "Start Guided Demo" button on another page writes sessionStorage
+    // directly and then navigates — the already-mounted widget must notice
+    // via the pathname dependency, not require a full page reload.
+    mockLinksFetch();
+    pathnameMock.mockReturnValue('/');
+    const { rerender } = render(<GuidedDemoWidget />);
+    expect(screen.queryByText('Accept a proposed interview time')).not.toBeInTheDocument();
+
+    // Simulate another component writing sessionStorage and then a
+    // client-side route change (App Router keeps this widget mounted, so
+    // only its pathname prop-equivalent changes, not a remount).
+    sessionStorage.setItem('emplement-guided-demo-step', '1');
+    pathnameMock.mockReturnValue('/some/other/page');
+    rerender(<GuidedDemoWidget />);
+
+    expect(await screen.findByText('Accept a proposed interview time')).toBeInTheDocument();
   });
 });

@@ -2,7 +2,7 @@
 
 import { useEffect, useRef, useState } from 'react';
 import { signIn } from 'next-auth/react';
-import { useRouter } from 'next/navigation';
+import { useRouter, usePathname } from 'next/navigation';
 import { Button } from '@/components/ui/Button';
 import { DEMO_STEPS, DEMO_ACCOUNT_CREDENTIALS, type ScenarioLinks } from '@/lib/demoScenario';
 
@@ -10,6 +10,7 @@ const STORAGE_KEY = 'emplement-guided-demo-step';
 
 export function GuidedDemoWidget() {
   const router = useRouter();
+  const pathname = usePathname();
   const [stepNumber, setStepNumber] = useState<number | null>(null);
   const [links, setLinks] = useState<ScenarioLinks | null>(null);
   const [linksError, setLinksError] = useState(false);
@@ -19,10 +20,18 @@ export function GuidedDemoWidget() {
   const headingRef = useRef<HTMLHeadingElement>(null);
   const linksRequestedRef = useRef(false);
 
+  // Re-read on every client-side route change, not just on mount: this
+  // widget is mounted once, globally, in providers.tsx and never remounts
+  // across navigation (Next.js App Router persists layout-level components
+  // across route changes). Without `pathname` as a dependency, a demo
+  // started via sessionStorage.setItem() elsewhere (e.g. the homepage's
+  // "Start Guided Demo" button) would never be noticed by an
+  // already-mounted widget until a full page reload. Same pattern as
+  // RouteFocusManager's "something changed, re-check" use of usePathname().
   useEffect(() => {
     const stored = sessionStorage.getItem(STORAGE_KEY);
     if (stored) setStepNumber(Number(stored));
-  }, []);
+  }, [pathname]);
 
   // Fetch scenario-links once, the first time a guided demo is actually in
   // progress, and cache the result for the rest of the session — not on
