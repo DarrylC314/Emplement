@@ -17,6 +17,17 @@ async function main() {
     },
   });
 
+  const systemActorPasswordHash = await bcrypt.hash(`system-actor-${Date.now()}-not-a-login`, 12);
+  await prisma.user.upsert({
+    where: { email: 'system@emplement.internal' },
+    update: {},
+    create: {
+      email: 'system@emplement.internal',
+      passwordHash: systemActorPasswordHash,
+      role: 'ADMIN',
+    },
+  });
+
   const claimantPasswordHash = await bcrypt.hash('ClaimantPass123', 12);
   const claimantUser = await prisma.user.upsert({
     where: { email: 'claimant@example.com' },
@@ -409,6 +420,7 @@ async function main() {
   console.log('Seed complete: claimant@example.com / ClaimantPass123 (flagged certification, claim ACTIVE; has a PROPOSED interview to Accept/Decline on My Applications — this is the guided demo scenario claimant)');
   console.log('Seed complete: claimant2@example.com / Claimant2Pass123 (claim ACTIVE, interview already CONFIRMED — hire this applicant to see it flip to RESTRICTED)');
   console.log('Seed complete: employer@example.com / EmployerPass123 (3 postings, 2 applicants — one interview proposed, one confirmed and ready to hire)');
+  console.log('Seed complete: system@emplement.internal (service account for scheduled jobs, no login)');
 }
 
 main()

@@ -24,6 +24,7 @@ enum VerificationStatus {
 enum ClaimStatus {
   ACTIVE
   RESTRICTED
+  REEVALUATION_REQUIRED
   DENIED
   CLOSED
 }
@@ -49,6 +50,12 @@ enum PaymentStatus {
 enum EmploymentEventType {
   HIRE
   SEPARATION
+}
+
+enum TriggerSource {
+  SYSTEM_SCHEDULED
+  SYSTEM_MANUAL_CHECK
+  STAFF
 }
 
 enum EmployerVerifiedStatus {
@@ -137,7 +144,8 @@ model User {
   sentMessages      Message[]           @relation("CaseworkerMessages")
   auditLogs         AuditLog[]
   uploadedDocuments Document[]          @relation("DocumentUploader")
-  dismissedEmploymentEvents EmploymentEvent[]
+  dismissedEmploymentEvents EmploymentEvent[] @relation("EmploymentEventDismissedBy")
+  triggeredEmploymentEvents EmploymentEvent[] @relation("EmploymentEventTriggeredBy")
 }
 
 model ClaimantProfile {
@@ -342,7 +350,20 @@ model EmploymentEvent {
   createdAt                DateTime            @default(now())
   dismissedAt       DateTime?
   dismissedByUserId String?
-  dismissedBy       User?     @relation(fields: [dismissedByUserId], references: [id])
+  // Named relation: this model has more than one User? relation once
+  // triggeredByUser (below) is added, so Prisma requires both to be named.
+  dismissedBy       User?     @relation("EmploymentEventDismissedBy", fields: [dismissedByUserId], references: [id])
+
+  // Fixed-term/seasonal expiration tracking. expectedEndDate and
+  // separationTriggeredAt are only ever populated on marketplace-originated
+  // HIRE events. reason/triggerSource/triggeredByUserId are only ever
+  // populated on the SEPARATION event the expiration check generates.
+  expectedEndDate       DateTime?
+  separationTriggeredAt DateTime?
+  reason                String?
+  triggerSource         TriggerSource?
+  triggeredByUserId     String?
+  triggeredByUser       User?          @relation("EmploymentEventTriggeredBy", fields: [triggeredByUserId], references: [id])
 }
 
 model CandidateProfile {
@@ -360,15 +381,19 @@ model CandidateProfile {
 }
 
 model JobPosting {
-  id          String           @id @default(cuid())
-  employerId  String
-  employer    EmployerProfile  @relation(fields: [employerId], references: [id])
-  title       String
-  description String
-  location    String
-  status      JobPostingStatus @default(OPEN)
-  tags        TagCategory[]    @default([])
-  createdAt   DateTime         @default(now())
+  id              String           @id @default(cuid())
+  employerId      String
+  employer        EmployerProfile  @relation(fields: [employerId], references: [id])
+  title           String
+  description     String
+  location        String
+  status          JobPostingStatus @default(OPEN)
+  tags            TagCategory[]    @default([])
+  createdAt       DateTime         @default(now())
+  // Optional fixed-term/seasonal end date, always the UTC instant
+  // corresponding to 23:59:59.999 America/Chicago on the selected calendar
+  // date (see src/lib/centralTime.ts). null means open-ended.
+  expectedEndDate DateTime?
 
   applications JobApplication[]
 }

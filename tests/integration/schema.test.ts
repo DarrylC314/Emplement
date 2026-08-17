@@ -210,6 +210,60 @@ describe('database schema', () => {
     await prisma.user.delete({ where: { id: staffUser.id } });
   });
 
+  it('can create and read back a JobPosting with a fixed-term expectedEndDate', async () => {
+    const employerUser = await prisma.user.create({
+      data: { email: `schema-test-employer-fixedterm-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'EMPLOYER' },
+    });
+    const employerProfile = await prisma.employerProfile.create({ data: { userId: employerUser.id } });
+
+    const posting = await prisma.jobPosting.create({
+      data: {
+        employerId: employerProfile.id,
+        title: 'Seasonal warehouse associate',
+        description: 'Holiday season',
+        location: 'Springfield, MO',
+        expectedEndDate: new Date('2026-12-01T05:59:59.999Z'),
+      },
+    });
+    expect(posting.expectedEndDate?.toISOString()).toBe('2026-12-01T05:59:59.999Z');
+
+    await prisma.jobPosting.delete({ where: { id: posting.id } });
+    await prisma.employerProfile.delete({ where: { id: employerProfile.id } });
+    await prisma.user.delete({ where: { id: employerUser.id } });
+  });
+
+  it('can create and read back an EmploymentEvent with expiration fields, attributed to a staff user', async () => {
+    const employerUser = await prisma.user.create({
+      data: { email: `schema-test-employer-expiration-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'EMPLOYER' },
+    });
+    const employerProfile = await prisma.employerProfile.create({ data: { userId: employerUser.id } });
+
+    const staffUser = await prisma.user.create({
+      data: { email: `schema-test-staff-expiration-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'CASEWORKER' },
+    });
+
+    const event = await prisma.employmentEvent.create({
+      data: {
+        employerId: employerProfile.id,
+        type: 'SEPARATION',
+        employeeName: 'Test Employee',
+        ssnHash: `test-hash-${Date.now()}`,
+        eventDate: new Date('2026-12-01T05:59:59.999Z'),
+        reason: 'Fixed-term/seasonal employment concluded',
+        triggerSource: 'STAFF',
+        triggeredByUserId: staffUser.id,
+      },
+    });
+    expect(event.reason).toBe('Fixed-term/seasonal employment concluded');
+    expect(event.triggerSource).toBe('STAFF');
+    expect(event.triggeredByUserId).toBe(staffUser.id);
+
+    await prisma.employmentEvent.delete({ where: { id: event.id } });
+    await prisma.employerProfile.delete({ where: { id: employerProfile.id } });
+    await prisma.user.delete({ where: { id: employerUser.id } });
+    await prisma.user.delete({ where: { id: staffUser.id } });
+  });
+
   it('can create and read back a CandidateProfile, JobPosting, and JobApplication', async () => {
     const claimantUser = await prisma.user.create({
       data: { email: `schema-test-candidate-${Date.now()}@example.com`, passwordHash: 'not-a-real-hash', role: 'CLAIMANT' },
