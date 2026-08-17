@@ -151,6 +151,43 @@ describe('POST /api/certifications', () => {
     await prisma.claim.delete({ where: { id: closedClaim.id } });
   });
 
+  it('refuses a certification against a REEVALUATION_REQUIRED claim', async () => {
+    const reevalClaim = await prisma.claim.create({
+      data: {
+        claimantId: claimantProfileId,
+        status: 'REEVALUATION_REQUIRED',
+        benefitYearStart: new Date('2026-08-11'),
+        benefitYearEnd: new Date('2027-08-11'),
+        weeklyBenefitAmount: 320,
+      },
+    });
+
+    const req = new Request('http://localhost/api/certifications', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimId: reevalClaim.id,
+        weekEndingDate: '2026-09-05',
+        ableAndAvailable: true,
+        workedThisWeek: false,
+        earnings: 0,
+        refusedWork: false,
+        jobSearchActivities: [
+          { employerName: 'Acme', contactMethod: 'Online', contactDate: '2026-09-02', position: 'Machinist' },
+          { employerName: 'Beta', contactMethod: 'Phone', contactDate: '2026-09-03', position: 'Operator' },
+          { employerName: 'Gamma', contactMethod: 'In person', contactDate: '2026-09-04', position: 'Technician' },
+        ],
+      }),
+    });
+    const res = await POST(req);
+    expect(res.status).toBe(409);
+    expect((await res.json()).error).toMatch(/reevaluation_required/i);
+
+    const created = await prisma.weeklyCertification.count({ where: { claimId: reevalClaim.id } });
+    expect(created).toBe(0);
+
+    await prisma.claim.delete({ where: { id: reevalClaim.id } });
+  });
+
   it('rejects a malformed JSON body with a clean 400', async () => {
     const res = await POST(
       new Request('http://localhost/api/certifications', { method: 'POST', body: '<<<not json' })

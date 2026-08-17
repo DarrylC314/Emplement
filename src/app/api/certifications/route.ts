@@ -42,7 +42,7 @@ export async function POST(req: Request) {
   // A closed or denied claim is terminal: accepting a new weekly certification
   // against one would let a claimant certify weeks on a claim that is no longer
   // payable, and would silently flip its status back to ACTIVE/RESTRICTED below.
-  if (claim.status === 'DENIED' || claim.status === 'CLOSED') {
+  if (claim.status === 'DENIED' || claim.status === 'CLOSED' || claim.status === 'REEVALUATION_REQUIRED') {
     return apiError(
       `This claim is ${claim.status.toLowerCase()} and can no longer accept weekly certifications.`,
       409
