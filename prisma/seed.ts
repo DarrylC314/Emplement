@@ -27,13 +27,20 @@ async function main() {
     },
   });
 
+  // ssnHash is backfilled via `update` (not the usual `update: {}`) because
+  // already-seeded environments — including this worktree's local dev
+  // database and production — already have a Seed Claimant row from before
+  // this field was required, and this field must be non-null for the
+  // guided demo's Hire step to succeed; a create-only fix would never reach
+  // that pre-existing row.
   const profile = await prisma.claimantProfile.upsert({
     where: { userId: claimantUser.id },
-    update: {},
+    update: { ssnHash: hashSSN('247-01-3456') },
     create: {
       userId: claimantUser.id,
       legalName: 'Seed Claimant',
       identityVerificationStatus: 'VERIFIED',
+      ssnHash: hashSSN('247-01-3456'),
     },
   });
 
