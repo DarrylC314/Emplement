@@ -26,7 +26,12 @@ export async function POST() {
           candidateProfile: {
             select: {
               applications: {
-                where: { jobPosting: { title: 'Warehouse Associate' } },
+                where: {
+                  jobPosting: {
+                    title: 'Warehouse Associate',
+                    employer: { companyName: 'Riverbend Logistics Inc.' },
+                  },
+                },
                 select: { id: true },
                 take: 1,
               },
@@ -44,7 +49,7 @@ export async function POST() {
     return apiError('Guided demo data is not available in this environment.', 404);
   }
 
-  await prisma.interview.update({
+  await prisma.interview.updateMany({
     where: { jobApplicationId: application.id },
     data: { status: 'PROPOSED', confirmedSlot: null },
   });
