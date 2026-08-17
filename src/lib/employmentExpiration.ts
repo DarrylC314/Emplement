@@ -163,7 +163,11 @@ async function processDueEvent(
             }
           }
           outcome = allReactivated ? 'REACTIVATED' : 'REEVALUATION_REQUIRED';
-          reasons = [...failureReasons];
+          // REACTIVATED has no failure reasons by definition (that's what
+          // "all reactivated" means) — give it its own explanatory reason so
+          // the claimant timeline's detail line doesn't fall back to
+          // silently repeating the "Claim reactivated" title verbatim.
+          reasons = allReactivated ? ['Structural eligibility requirements met'] : [...failureReasons];
         }
 
         await tx.message.create({

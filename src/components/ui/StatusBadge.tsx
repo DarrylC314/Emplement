@@ -29,7 +29,7 @@ export function StatusBadge({ status }: { status: Status }) {
       <span aria-hidden="true" data-testid="status-badge-icon">
         {config.icon}
       </span>
-      {config.label}
+      <span>{config.label}</span>
     </span>
   );
 }

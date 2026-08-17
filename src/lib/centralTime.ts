@@ -9,7 +9,16 @@
 // everything downstream (storage, comparison, the expiration check's "is
 // this due" test) works in plain UTC against the instant this returns.
 export function centralTimeEndOfDayToUtc(dateOnly: string): Date {
-  const [year, month, day] = dateOnly.split('-').map(Number);
+  const parts = dateOnly.split('-');
+  if (parts.length !== 3) {
+    throw new Error(`Invalid date-only string: ${dateOnly}`);
+  }
+  const year = Number(parts[0]);
+  const month = Number(parts[1]);
+  const day = Number(parts[2]);
+  if ([year, month, day].some((n) => Number.isNaN(n))) {
+    throw new Error(`Invalid date-only string: ${dateOnly}`);
+  }
   const noonGuess = new Date(Date.UTC(year, month - 1, day, 12, 0, 0));
 
   const offsetFormatter = new Intl.DateTimeFormat('en-US', {
