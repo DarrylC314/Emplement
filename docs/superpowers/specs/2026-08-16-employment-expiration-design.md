@@ -156,7 +156,9 @@ done once, at write time:
   `centralTimeEndOfDayToUtc(dateOnly: string): Date` — given a
   `YYYY-MM-DD` calendar date, returns the UTC instant corresponding to
   `23:59:59.999` in `America/Chicago` on that date (correctly accounting
-  for whichever of CST/CDT applies to that specific date).
+  for whichever of CST/CDT applies to that specific date). Validates its
+  input and throws (rather than returning an invalid `Date`) when
+  `dateOnly` isn't a well-formed `YYYY-MM-DD` string.
 - The employer's posting form calls this once, when saving
   `JobPosting.expectedEndDate`. The value copied to
   `EmploymentEvent.expectedEndDate` at hire time is already the correct UTC
@@ -220,9 +222,18 @@ abort the batch — caught individually and recorded under `failures`):
    steps 4–5 apply uniformly to all of the claimant's `RESTRICTED` claims via
    a single `updateMany`, the same pattern the hire route already uses
    against `status: 'ACTIVE'`.
-4. **Check for other active employment:** any other `HIRE` `EmploymentEvent`
-   for this claimant with no later `SEPARATION` event (by `eventDate`),
-   excluding the one just created. If one exists:
+4. **Check for other active employment:** walk every one of this claimant's
+   `EmploymentEvent` rows chronologically (across every employer, including
+   this one), excluding only the due `HIRE` event's own id and the
+   `SEPARATION` event just created, tracking an open-`HIRE` *count* per
+   employer (incremented on `HIRE`, decremented on `SEPARATION`). This is
+   deliberately a per-employer balance rather than a blanket "exclude this
+   whole employer" check: a claimant can have two separate `HIRE` events at
+   the same employer (e.g. two distinct fixed-term postings there), and one
+   `SEPARATION` should only close the oldest of them, not the employer as a
+   whole. If any employer — including possibly this same employer, via a
+   second still-open hire there — has a positive open-`HIRE` count after the
+   walk:
    - Outcome: `RETAINED_RESTRICTED`. Claim status is untouched (stays
      `RESTRICTED`). `reasons` records the other employer's name.
 5. **If this was the final active employment:** the claim *always* moves
@@ -243,7 +254,17 @@ abort the batch — caught individually and recorded under `failures`):
    language (three variants matching the three outcomes above).
 7. Write one `AuditLog` entry, `action: 'EMPLOYMENT_EXPIRATION_PROCESSED'`,
    `targetEntity: 'EmploymentEvent'`, `targetId` = the new `SEPARATION`
-   event's id, `metadata: { outcome, reasons, triggerSource }`. `actorUserId`
+   event's id, `metadata: { outcome, reasons, triggerSource, statusPath }`.
+   `statusPath` records the claim status transition path actually taken —
+   `['RESTRICTED', 'REEVALUATION_REQUIRED', 'ACTIVE']` for `REACTIVATED`,
+   `['RESTRICTED', 'REEVALUATION_REQUIRED']` for `REEVALUATION_REQUIRED`, and
+   `['RESTRICTED']` (unchanged) for `RETAINED_RESTRICTED` — so an auditor can
+   confirm the mandatory intermediate-state sequencing from the `AuditLog`
+   alone, without having to trust the code that produced it. Omitted when
+   there's no outcome to report (no matched claimant, or no `RESTRICTED`
+   claim to act on). `reasons` is non-empty for every outcome, including
+   `REACTIVATED` (`['Structural eligibility requirements met']`) — it's
+   never an empty array. `actorUserId`
    is the real caseworker's session id for `SYSTEM_MANUAL_CHECK` runs (the
    route is already session-gated), or a seeded system service account
    (`system@emplement.internal`, added to `prisma/seed.ts` alongside the
@@ -300,10 +321,11 @@ for any event whose transaction threw, without stopping the loop.
 - A due `HIRE` event whose transaction throws (e.g. an unexpected data
   inconsistency) is caught individually, recorded in `failures` with its
   error message, and does not stop the rest of the batch from processing.
-- `GET`/`POST /api/staff/employment-expirations/run-check` returns a normal
-  200 with the summary even when some records failed — `failures` being
-  non-empty is informational, not an HTTP-level error. A total failure to
-  run at all (e.g. a database connection error) surfaces as a normal 500.
+- `POST /api/staff/employment-expirations/run-check` (there is no `GET` on
+  this route) returns a normal 200 with the summary even when some records
+  failed — `failures` being non-empty is informational, not an HTTP-level
+  error. A total failure to run at all (e.g. a database connection error)
+  surfaces as a normal 500.
 - The staff dashboard renders a failed fetch of the run-check route with
   the same inline-error pattern used elsewhere in the app, and does not
   clear or hide the previous run's results.

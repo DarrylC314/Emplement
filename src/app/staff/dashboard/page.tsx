@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
 import { useSession } from 'next-auth/react';
+import { Button } from '@/components/ui/Button';
 
 type QueueItem = {
   id: string;
@@ -71,6 +72,8 @@ export default function StaffDashboardPage() {
         return;
       }
       setExpirationSummary(await res.json());
+    } catch {
+      setExpirationError('The expiration check could not be run. Please try again.');
     } finally {
       setExpirationRunning(false);
     }
@@ -123,14 +126,9 @@ export default function StaffDashboardPage() {
         <p className="text-sm text-text-secondary mb-2">
           Runs automatically on a schedule. Use this to run it now for a demo, or to catch up after a missed run.
         </p>
-        <button
-          type="button"
-          onClick={handleRunExpirationCheck}
-          disabled={expirationRunning}
-          className="rounded bg-primary px-4 py-2 text-white disabled:opacity-50"
-        >
+        <Button type="button" onClick={handleRunExpirationCheck} disabled={expirationRunning}>
           {expirationRunning ? 'Running…' : 'Run expiration check now'}
-        </button>
+        </Button>
         {expirationError && (
           <p role="alert" className="mt-2 text-error-text">
             {expirationError}

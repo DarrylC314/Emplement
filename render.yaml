@@ -10,7 +10,7 @@ services:
     runtime: node
     plan: starter
     schedule: "0 12 * * *" # Daily at 12:00 UTC (06:00 or 07:00 Central, depending on DST)
-    buildCommand: npm install
+    buildCommand: npm install --include=dev
     startCommand: npm run check:employment-expirations
     envVars:
       - key: DATABASE_URL

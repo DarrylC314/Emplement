@@ -1,3 +1,4 @@
+import type { ClaimStatus } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { reviewActionSchema } from '@/lib/validation/review';
 import { writeAuditLog } from '@/lib/audit';
@@ -160,6 +161,27 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return apiError('Certification not found', 404);
   }
 
+  // An APPROVED review normally flips the claim straight to ACTIVE, but that
+  // is only safe when the claim's CURRENT status is one this route already
+  // understands as a plain approve/deny cycle. If the claim has since moved
+  // to REEVALUATION_REQUIRED (e.g. the employment-expiration check ran in
+  // the meantime) or CLOSED, approving a — possibly stale — flagged
+  // certification must not silently clear that status: REEVALUATION_REQUIRED
+  // exists specifically so a claim only ever reaches ACTIVE through the
+  // structural-eligibility sequencing in src/lib/employmentExpiration.ts, not
+  // through an unrelated route that predates that state. Checked before any
+  // writes (mirrors the 404 check above), so a rejected request leaves no
+  // partial ClaimReviewAction/Payment/AuditLog rows behind.
+  if (
+    parsed.data.action === 'APPROVED' &&
+    (certification.claim.status === 'REEVALUATION_REQUIRED' || certification.claim.status === 'CLOSED')
+  ) {
+    return apiError(
+      `This claim is ${certification.claim.status.toLowerCase()} and cannot be approved back to Active through a certification review.`,
+      409
+    );
+  }
+
   const reviewAction = await prisma.claimReviewAction.create({
     data: {
       weeklyCertificationId: params.id,
@@ -174,10 +196,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     },
   });
 
-  let nextStatus: 'ACTIVE' | 'DENIED' | 'RESTRICTED' = certification.claim.status as
-    | 'ACTIVE'
-    | 'DENIED'
-    | 'RESTRICTED';
+  let nextStatus: ClaimStatus = certification.claim.status;
   if (parsed.data.action === 'APPROVED') nextStatus = 'ACTIVE';
   if (parsed.data.action === 'DENIED') nextStatus = 'DENIED';
   if (parsed.data.action === 'FLAGGED_FOR_FRAUD') nextStatus = 'RESTRICTED';

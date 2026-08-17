@@ -131,9 +131,12 @@ describe('runEmploymentExpirationCheck', () => {
       where: { targetEntity: 'EmploymentEvent', targetId: separation!.id, action: 'EMPLOYMENT_EXPIRATION_PROCESSED' },
     });
     expect(log?.actorUserId).toBe(systemActorUserId);
-    const metadata = log?.metadata as { outcome?: string; triggerSource?: string } | null;
+    const metadata = log?.metadata as { outcome?: string; triggerSource?: string; statusPath?: string[] } | null;
     expect(metadata?.outcome).toBe('REACTIVATED');
     expect(metadata?.triggerSource).toBe('SYSTEM_SCHEDULED');
+    // Durable proof the claim passed through REEVALUATION_REQUIRED as a
+    // genuine intermediate state, not a direct RESTRICTED -> ACTIVE jump.
+    expect(metadata?.statusPath).toEqual(['RESTRICTED', 'REEVALUATION_REQUIRED', 'ACTIVE']);
   });
 
   it('leaves the claim in REEVALUATION_REQUIRED when the benefit year has already ended', async () => {
@@ -216,6 +219,47 @@ describe('runEmploymentExpirationCheck', () => {
     await prisma.auditLog.deleteMany({ where: { actorUserId: otherEmployerUser.id } });
     await prisma.employerProfile.delete({ where: { id: otherEmployerProfile.id } });
     await prisma.user.delete({ where: { id: otherEmployerUser.id } });
+  });
+
+  it('retains RESTRICTED when a second HIRE at the SAME employer is still open', async () => {
+    // Two separate fixed-term postings at the same employer: the first
+    // (due) HIRE's expectedEndDate has passed, but a second, independent
+    // HIRE at that same employer has no expectedEndDate and no SEPARATION,
+    // so it's still open. The claimant is still employed there, so the
+    // claim must stay RESTRICTED — a blanket "exclude this whole employer"
+    // check would incorrectly miss this second, still-open hire.
+    await createRestrictedClaim();
+    await createDueHireEvent();
+
+    const secondHireAtSameEmployer = await prisma.employmentEvent.create({
+      data: {
+        employerId: employerProfileId,
+        type: 'HIRE',
+        employeeName: 'Expiration Test Claimant',
+        ssnHash: hashSSN('512-88-3344'),
+        eventDate: new Date('2026-09-15'),
+        // No expectedEndDate: this second posting is open-ended and was
+        // never due for processing in the first place.
+        matchedClaimantProfileId: claimantProfileId,
+      },
+    });
+    employmentEventIds.push(secondHireAtSameEmployer.id);
+
+    const summary = await runEmploymentExpirationCheck({ source: 'SYSTEM_SCHEDULED' });
+
+    expect(summary.claimsRetainedRestricted).toBe(1);
+    expect(summary.claimsSentToReevaluation).toBe(0);
+    expect(summary.claimsReactivated).toBe(0);
+
+    const claim = await prisma.claim.findUnique({ where: { id: claimIds[0] } });
+    expect(claim?.status).toBe('RESTRICTED');
+
+    const message = await prisma.message.findFirst({ where: { claimantId: claimantProfileId } });
+    expect(message?.subject).toBe('Your fixed-term employment has ended');
+    expect(message?.body).toContain('Expiration Test Co');
+
+    const separation = await prisma.employmentEvent.findFirst({ where: { employerId: employerProfileId, type: 'SEPARATION' } });
+    employmentEventIds.push(separation!.id);
   });
 
   it('is idempotent: a second run against the same data processes zero records', async () => {

@@ -40,6 +40,17 @@ const MESSAGE_SUBJECTS: Record<ExpirationOutcome, string> = {
   RETAINED_RESTRICTED: 'Your fixed-term employment has ended',
 };
 
+// Durable, audit-trail-only proof that the RESTRICTED -> REEVALUATION_REQUIRED
+// -> ACTIVE sequencing invariant was actually followed for a given outcome —
+// makes it provable from the AuditLog alone, without having to trust that the
+// code that produced it enforced the sequencing (which it does; see
+// processDueEvent below).
+const STATUS_PATHS: Record<ExpirationOutcome, string[]> = {
+  REACTIVATED: ['RESTRICTED', 'REEVALUATION_REQUIRED', 'ACTIVE'],
+  REEVALUATION_REQUIRED: ['RESTRICTED', 'REEVALUATION_REQUIRED'],
+  RETAINED_RESTRICTED: ['RESTRICTED'],
+};
+
 function buildMessageBody(outcome: ExpirationOutcome, employerName: string | null, reasons: string[]): string {
   const employer = employerName ?? 'your employer';
   if (outcome === 'REACTIVATED') {
@@ -121,27 +132,39 @@ async function processDueEvent(
       if (restrictedClaims.length === 0) {
         resultData = { employmentEventId: separationEvent.id, claimantProfileId, outcome: null, reasons: [] };
       } else {
-        // "Other active employment": walk every other employer's events for
-        // this claimant chronologically, tracking which employers are
-        // currently "open" (a HIRE with no later SEPARATION at that same
-        // employer). This employer's own history is excluded — we're asking
-        // whether the claimant is employed *elsewhere*.
-        const otherEvents = await tx.employmentEvent.findMany({
-          where: { matchedClaimantProfileId: claimantProfileId, employerId: { not: dueEvent.employerId } },
+        // "Other active employment": walk every one of this claimant's
+        // EmploymentEvent rows chronologically (across every employer,
+        // including this one), tracking an open-HIRE *count* per employer
+        // rather than a boolean — a claimant can have two separate HIRE
+        // events at the same employer (e.g. two distinct fixed-term
+        // postings there), and one SEPARATION should only close the oldest
+        // of them, not the employer as a whole. Only the specific due
+        // event's own id and the id of the SEPARATION just created above are
+        // excluded; every other event, including other events at this same
+        // employer, is counted.
+        const claimantEvents = await tx.employmentEvent.findMany({
+          where: {
+            matchedClaimantProfileId: claimantProfileId,
+            id: { notIn: [dueEvent.id, separationEvent.id] },
+          },
           select: { employerId: true, type: true, eventDate: true, employer: { select: { companyName: true } } },
           orderBy: { eventDate: 'asc' },
         });
-        const openEmployers = new Map<string, string | null>();
-        for (const event of otherEvents) {
-          if (event.type === 'HIRE') openEmployers.set(event.employerId, event.employer.companyName);
-          else openEmployers.delete(event.employerId);
+        const openHireCounts = new Map<string, number>();
+        const employerNames = new Map<string, string | null>();
+        for (const event of claimantEvents) {
+          employerNames.set(event.employerId, event.employer.companyName);
+          const openCount = openHireCounts.get(event.employerId) ?? 0;
+          openHireCounts.set(event.employerId, event.type === 'HIRE' ? openCount + 1 : Math.max(0, openCount - 1));
         }
+        const firstOpenEmployer = [...openHireCounts.entries()].find(([, count]) => count > 0);
 
         let outcome: ExpirationOutcome;
         let reasons: string[];
 
-        if (openEmployers.size > 0) {
-          const [otherEmployerName] = openEmployers.values();
+        if (firstOpenEmployer) {
+          const [openEmployerId] = firstOpenEmployer;
+          const otherEmployerName = employerNames.get(openEmployerId);
           outcome = 'RETAINED_RESTRICTED';
           reasons = [`Still employed at ${otherEmployerName ?? 'another employer'}`];
         } else {
@@ -201,6 +224,7 @@ async function processDueEvent(
           outcome: resultData.outcome,
           reasons: resultData.reasons,
           triggerSource: trigger.source,
+          ...(resultData.outcome ? { statusPath: STATUS_PATHS[resultData.outcome] } : {}),
         } as Prisma.InputJsonValue,
       },
     });

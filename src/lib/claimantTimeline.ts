@@ -102,7 +102,12 @@ export function buildClaimantTimeline(
       const metadata = entry.metadata as { outcome?: string; reasons?: string[] } | null;
       const title = metadata?.outcome ? EXPIRATION_OUTCOME_TITLES[metadata.outcome] : undefined;
       if (title) {
-        events.push({ timestamp, title, detail: metadata?.reasons?.[0] ?? title });
+        // Falls back to a neutral string rather than repeating `title` as
+        // the detail line — a row with an empty `reasons` array (e.g. any
+        // real row written before this feature's earlier bugfix that made
+        // REACTIVATED always populate reasons[0]) would otherwise render
+        // as an uninformative "Claim reactivated / Claim reactivated" pair.
+        events.push({ timestamp, title, detail: metadata?.reasons?.[0] ?? 'No additional detail recorded' });
       }
       continue;
     }

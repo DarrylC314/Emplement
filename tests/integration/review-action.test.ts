@@ -22,13 +22,15 @@ describe('review action + claimant record editing', () => {
   let amountCertId: string;
   let invalidAmountClaimId: string;
   let invalidAmountCertId: string;
+  let reevalClaimId: string;
+  let reevalCertId: string;
   let claimantProfileId: string;
   let claimantUserId: string;
   let caseworkerId: string;
   const extraCertIds: string[] = [];
   const extraClaimIds: string[] = [];
 
-  async function makeClaimWithCert(status: 'RESTRICTED' | 'ACTIVE' = 'RESTRICTED') {
+  async function makeClaimWithCert(status: 'RESTRICTED' | 'ACTIVE' | 'REEVALUATION_REQUIRED' = 'RESTRICTED') {
     const claim = await prisma.claim.create({
       data: {
         claimantId: claimantProfileId,
@@ -101,6 +103,7 @@ describe('review action + claimant record editing', () => {
     ({ claimId: fraudClaimId, certId: fraudCertId } = await makeClaimWithCert('ACTIVE'));
     ({ claimId: amountClaimId, certId: amountCertId } = await makeClaimWithCert('ACTIVE'));
     ({ claimId: invalidAmountClaimId, certId: invalidAmountCertId } = await makeClaimWithCert('ACTIVE'));
+    ({ claimId: reevalClaimId, certId: reevalCertId } = await makeClaimWithCert('REEVALUATION_REQUIRED'));
   });
 
   it('approves a flagged certification and reactivates the claim', async () => {
@@ -167,6 +170,38 @@ describe('review action + claimant record editing', () => {
     const payment = await prisma.payment.findFirst({ where: { weeklyCertificationId: fraudCertId } });
     expect(payment).not.toBeNull();
     expect(payment?.status).toBe('WITHHELD');
+  });
+
+  it('rejects an APPROVED review against a claim that has since moved to REEVALUATION_REQUIRED', async () => {
+    // A FLAGGED weekly certification can be approved after its claim has
+    // moved to REEVALUATION_REQUIRED (e.g. the employment-expiration check
+    // ran in the meantime). Approving it must not silently clear that
+    // status back to ACTIVE through this unrelated route — reactivation is
+    // only ever allowed via the structural-eligibility sequencing in
+    // src/lib/employmentExpiration.ts.
+    const req = new Request(`http://localhost/api/certifications/${reevalCertId}/review`, {
+      method: 'POST',
+      body: JSON.stringify({
+        caseworkerId,
+        action: 'APPROVED',
+        reason: 'Attempting to approve a certification whose claim is under reevaluation.',
+      }),
+    });
+    const res = await POST(req, { params: { id: reevalCertId } });
+    expect(res.status).toBe(409);
+    const body = await res.json();
+    expect(body.error).toMatch(/reevaluation_required/i);
+
+    const claim = await prisma.claim.findUnique({ where: { id: reevalClaimId } });
+    expect(claim?.status).toBe('REEVALUATION_REQUIRED');
+
+    const reviewActions = await prisma.claimReviewAction.findMany({
+      where: { weeklyCertificationId: reevalCertId },
+    });
+    expect(reviewActions.length).toBe(0);
+
+    const payment = await prisma.payment.findFirst({ where: { weeklyCertificationId: reevalCertId } });
+    expect(payment).toBeNull();
   });
 
   it('adjusts the weekly benefit amount and records the previous value', async () => {
