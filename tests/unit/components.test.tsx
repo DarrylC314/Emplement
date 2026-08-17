@@ -63,4 +63,9 @@ describe('StatusBadge', () => {
     render(<StatusBadge status="DENIED" />);
     expect(screen.getByText('Denied')).toBeInTheDocument();
   });
+
+  it('renders text for REEVALUATION_REQUIRED', () => {
+    render(<StatusBadge status="REEVALUATION_REQUIRED" />);
+    expect(screen.getByText('Reevaluation required')).toBeInTheDocument();
+  });
 });

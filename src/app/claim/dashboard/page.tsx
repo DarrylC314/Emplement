@@ -8,7 +8,7 @@ import { Button } from '@/components/ui/Button';
 
 type Claim = {
   id: string;
-  status: 'ACTIVE' | 'RESTRICTED' | 'DENIED' | 'CLOSED';
+  status: 'ACTIVE' | 'RESTRICTED' | 'REEVALUATION_REQUIRED' | 'DENIED' | 'CLOSED';
   weeklyBenefitAmount: string;
   openedDate: string;
 };

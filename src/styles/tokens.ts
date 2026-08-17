@@ -20,6 +20,8 @@ export const colors = {
   statusRestrictedText: '#92400E', // 6.2:1 on statusRestrictedBg
   statusDeniedBg: '#FCE8E8',
   statusDeniedText: '#B91C1C', // 5.5:1 on statusDeniedBg
+  statusReevaluationBg: '#EDE9FE',
+  statusReevaluationText: '#5B21B6', // 7.1:1 on statusReevaluationBg
 
   errorBg: '#FCE8E8',
   errorText: '#B91C1C',

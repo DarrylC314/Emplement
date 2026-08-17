@@ -13,7 +13,7 @@ type ClaimantDetail = {
   gender: string | null;
   claims: {
     id: string;
-    status: 'ACTIVE' | 'RESTRICTED' | 'DENIED' | 'CLOSED';
+    status: 'ACTIVE' | 'RESTRICTED' | 'REEVALUATION_REQUIRED' | 'DENIED' | 'CLOSED';
     weeklyBenefitAmount: string;
     certifications: {
       id: string;

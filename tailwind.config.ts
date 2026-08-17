@@ -18,6 +18,8 @@ const config: Config = {
         'status-restricted-text': colors.statusRestrictedText,
         'status-denied-bg': colors.statusDeniedBg,
         'status-denied-text': colors.statusDeniedText,
+        'status-reevaluation-bg': colors.statusReevaluationBg,
+        'status-reevaluation-text': colors.statusReevaluationText,
         'error-bg': colors.errorBg,
         'error-text': colors.errorText,
         'error-border': colors.errorBorder,
