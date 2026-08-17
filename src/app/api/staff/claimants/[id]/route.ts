@@ -71,6 +71,7 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           id: true,
           type: true,
           eventDate: true,
+          reason: true,
           employer: { select: { companyName: true } },
         },
       },
@@ -98,14 +99,24 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
   // all skips this query entirely rather than running it against an empty
   // `in: []` array.
   const applications = claimant.candidateProfile?.applications ?? [];
-  const auditEntries =
+  const employmentEventIds = claimant.matchedEmploymentEvents.map((e) => e.id);
+  const [applicationAuditEntries, employmentEventAuditEntries] = await Promise.all([
     applications.length === 0
-      ? []
-      : await prisma.auditLog.findMany({
+      ? Promise.resolve([])
+      : prisma.auditLog.findMany({
           where: { targetEntity: 'JobApplication', targetId: { in: applications.map((a) => a.id) } },
           orderBy: { timestamp: 'asc' },
           select: { action: true, targetId: true, timestamp: true, metadata: true },
-        });
+        }),
+    employmentEventIds.length === 0
+      ? Promise.resolve([])
+      : prisma.auditLog.findMany({
+          where: { targetEntity: 'EmploymentEvent', targetId: { in: employmentEventIds } },
+          orderBy: { timestamp: 'asc' },
+          select: { action: true, targetId: true, timestamp: true, metadata: true },
+        }),
+  ]);
+  const auditEntries = [...applicationAuditEntries, ...employmentEventAuditEntries];
   const timeline = buildClaimantTimeline(applications, auditEntries, claimant.matchedEmploymentEvents);
 
   // Deliberate, per-record access, unlike the search/queue list routes: a

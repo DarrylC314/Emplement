@@ -80,6 +80,77 @@ describe('buildClaimantTimeline', () => {
     expect(events[0]?.detail).toBe('an employer');
   });
 
+  it('appends the separation reason to the "Separated" entry when present', () => {
+    const events = buildClaimantTimeline(
+      [],
+      [],
+      [
+        {
+          type: 'SEPARATION',
+          eventDate: '2026-12-01T05:59:59.999Z',
+          employer: { companyName: 'Seasonal Co' },
+          reason: 'Fixed-term/seasonal employment concluded',
+        },
+      ]
+    );
+    expect(events[0]?.detail).toBe('Seasonal Co — Fixed-term/seasonal employment concluded');
+  });
+
+  it('synthesizes a "Claim reactivated" entry from an EMPLOYMENT_EXPIRATION_PROCESSED audit entry', () => {
+    const events = buildClaimantTimeline(
+      [],
+      [
+        {
+          action: 'EMPLOYMENT_EXPIRATION_PROCESSED',
+          targetId: 'sep-event-1',
+          timestamp: '2026-12-05T09:00:00Z',
+          metadata: { outcome: 'REACTIVATED', reasons: [] },
+        },
+      ],
+      [
+        {
+          type: 'SEPARATION',
+          eventDate: '2026-12-01T05:59:59.999Z',
+          employer: { companyName: 'Seasonal Co' },
+          reason: 'Fixed-term/seasonal employment concluded',
+        },
+      ]
+    );
+    expect(events.map((e) => e.title)).toEqual(['Separated', 'Claim reactivated']);
+  });
+
+  it('synthesizes a "Reevaluation required" entry with its failing checks, and a "Claim remains restricted" entry with its reason', () => {
+    const reevalEvents = buildClaimantTimeline(
+      [],
+      [
+        {
+          action: 'EMPLOYMENT_EXPIRATION_PROCESSED',
+          targetId: 'sep-event-2',
+          timestamp: '2026-12-05T09:00:00Z',
+          metadata: { outcome: 'REEVALUATION_REQUIRED', reasons: ['Benefit year has ended'] },
+        },
+      ],
+      [{ type: 'SEPARATION', eventDate: '2026-12-01T05:59:59.999Z', employer: { companyName: 'Seasonal Co' } }]
+    );
+    expect(reevalEvents[1]?.title).toBe('Reevaluation required');
+    expect(reevalEvents[1]?.detail).toBe('Benefit year has ended');
+
+    const retainedEvents = buildClaimantTimeline(
+      [],
+      [
+        {
+          action: 'EMPLOYMENT_EXPIRATION_PROCESSED',
+          targetId: 'sep-event-3',
+          timestamp: '2026-12-05T09:00:00Z',
+          metadata: { outcome: 'RETAINED_RESTRICTED', reasons: ['Still employed at Other Co'] },
+        },
+      ],
+      [{ type: 'SEPARATION', eventDate: '2026-12-01T05:59:59.999Z', employer: { companyName: 'Seasonal Co' } }]
+    );
+    expect(retainedEvents[1]?.title).toBe('Claim remains restricted');
+    expect(retainedEvents[1]?.detail).toBe('Still employed at Other Co');
+  });
+
   it('deduplicates repeated audit entries for the same action, keeping only the latest', () => {
     // Simulates a demo application accepted/reset/re-accepted across
     // several replays: three INTERVIEW_ACCEPTED entries for the same

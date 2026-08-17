@@ -20,6 +20,7 @@ export type TimelineEmploymentEvent = {
   type: 'HIRE' | 'SEPARATION';
   eventDate: string | Date;
   employer: { companyName: string | null };
+  reason?: string | null;
 };
 
 // Audit actions written against a JobApplication's own id, in the order
@@ -38,6 +39,12 @@ const APPLICATION_AUDIT_TITLES: Record<string, string> = {
   INTERVIEW_PROPOSED: 'Interview proposed',
   INTERVIEW_ACCEPTED: 'Interview accepted',
   INTERVIEW_DECLINED: 'Interview declined',
+};
+
+const EXPIRATION_OUTCOME_TITLES: Record<string, string> = {
+  REACTIVATED: 'Claim reactivated',
+  REEVALUATION_REQUIRED: 'Reevaluation required',
+  RETAINED_RESTRICTED: 'Claim remains restricted',
 };
 
 // Builds one clean, chronological story for a claimant's case page from
@@ -60,10 +67,11 @@ export function buildClaimantTimeline(
   // "Hired" reads as the cause, immediately followed by its consequence,
   // rather than the reverse.
   for (const event of employmentEvents) {
+    const employerName = event.employer.companyName ?? 'an employer';
     events.push({
       timestamp: new Date(event.eventDate).toISOString(),
       title: event.type === 'HIRE' ? 'Hired' : 'Separated',
-      detail: event.employer.companyName ?? 'an employer',
+      detail: event.reason ? `${employerName} — ${event.reason}` : employerName,
     });
   }
 
@@ -88,11 +96,21 @@ export function buildClaimantTimeline(
   );
 
   for (const entry of dedupedAuditEntries) {
+    const timestamp = new Date(entry.timestamp).toISOString();
+
+    if (entry.action === 'EMPLOYMENT_EXPIRATION_PROCESSED') {
+      const metadata = entry.metadata as { outcome?: string; reasons?: string[] } | null;
+      const title = metadata?.outcome ? EXPIRATION_OUTCOME_TITLES[metadata.outcome] : undefined;
+      if (title) {
+        events.push({ timestamp, title, detail: metadata?.reasons?.[0] ?? title });
+      }
+      continue;
+    }
+
     const application = applicationById.get(entry.targetId);
     if (!application) continue;
     const employerName = application.jobPosting.employer.companyName ?? 'an employer';
 
-    const timestamp = new Date(entry.timestamp).toISOString();
     const title = APPLICATION_AUDIT_TITLES[entry.action];
     if (title) {
       events.push({
