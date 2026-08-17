@@ -1,9 +1,17 @@
 import { prisma } from '@/lib/prisma';
-import { writeAuditLog } from '@/lib/audit';
-import type { TriggerSource } from '@prisma/client';
+import type { Prisma, TriggerSource } from '@prisma/client';
 
 export const FIXED_TERM_SEPARATION_REASON = 'Fixed-term/seasonal employment concluded';
 const SYSTEM_ACTOR_EMAIL = 'system@emplement.internal';
+
+// Thrown from inside processDueEvent's transaction to force a full rollback
+// when a concurrent runEmploymentExpirationCheck invocation has already
+// claimed this due event (stamped its separationTriggeredAt) between this
+// run's SELECT and this event's own transaction. Never caught anywhere
+// except the outer loop below, which treats it as a benign skip — not a
+// failure. Mirrors ApplicationAlreadyResolvedError in
+// src/app/api/employer/job-applications/[id]/hire/route.ts.
+class AlreadyClaimedError extends Error {}
 
 export type ExpirationOutcome = 'REACTIVATED' | 'REEVALUATION_REQUIRED' | 'RETAINED_RESTRICTED';
 
@@ -66,8 +74,27 @@ type DueEvent = {
   employer: { companyName: string | null };
 };
 
-async function processDueEvent(dueEvent: DueEvent, trigger: Trigger, now: Date): Promise<ExpirationCheckResult> {
+async function processDueEvent(
+  dueEvent: DueEvent,
+  trigger: Trigger,
+  now: Date,
+  actorUserId: string
+): Promise<ExpirationCheckResult> {
   const result = await prisma.$transaction(async (tx) => {
+    // Re-check (and atomically claim) the precondition the outer SELECT
+    // already filtered on. This is the first write in the transaction, and
+    // it happens before the SEPARATION event is created, so a lost race
+    // against a concurrent runEmploymentExpirationCheck invocation (e.g. a
+    // scheduled run overlapping a manually-triggered one) never leaves a
+    // duplicate SEPARATION record behind — the whole transaction rolls back.
+    const claim = await tx.employmentEvent.updateMany({
+      where: { id: dueEvent.id, separationTriggeredAt: null },
+      data: { separationTriggeredAt: now },
+    });
+    if (claim.count === 0) {
+      throw new AlreadyClaimedError();
+    }
+
     const separationEvent = await tx.employmentEvent.create({
       data: {
         employerId: dueEvent.employerId,
@@ -82,78 +109,99 @@ async function processDueEvent(dueEvent: DueEvent, trigger: Trigger, now: Date):
       },
     });
 
-    await tx.employmentEvent.update({
-      where: { id: dueEvent.id },
-      data: { separationTriggeredAt: now },
-    });
+    let resultData: ExpirationCheckResult;
 
     const claimantProfileId = dueEvent.matchedClaimantProfileId;
     if (!claimantProfileId) {
-      return { employmentEventId: separationEvent.id, claimantProfileId: null, outcome: null, reasons: [] as string[] };
-    }
-
-    const restrictedClaims = await tx.claim.findMany({
-      where: { claimantId: claimantProfileId, status: 'RESTRICTED' },
-    });
-    if (restrictedClaims.length === 0) {
-      return { employmentEventId: separationEvent.id, claimantProfileId, outcome: null, reasons: [] as string[] };
-    }
-
-    // "Other active employment": walk every other employer's events for
-    // this claimant chronologically, tracking which employers are
-    // currently "open" (a HIRE with no later SEPARATION at that same
-    // employer). This employer's own history is excluded — we're asking
-    // whether the claimant is employed *elsewhere*.
-    const otherEvents = await tx.employmentEvent.findMany({
-      where: { matchedClaimantProfileId: claimantProfileId, employerId: { not: dueEvent.employerId } },
-      select: { employerId: true, type: true, eventDate: true, employer: { select: { companyName: true } } },
-      orderBy: { eventDate: 'asc' },
-    });
-    const openEmployers = new Map<string, string | null>();
-    for (const event of otherEvents) {
-      if (event.type === 'HIRE') openEmployers.set(event.employerId, event.employer.companyName);
-      else openEmployers.delete(event.employerId);
-    }
-
-    let outcome: ExpirationOutcome;
-    let reasons: string[];
-
-    if (openEmployers.size > 0) {
-      const [otherEmployerName] = openEmployers.values();
-      outcome = 'RETAINED_RESTRICTED';
-      reasons = [`Still employed at ${otherEmployerName ?? 'another employer'}`];
+      resultData = { employmentEventId: separationEvent.id, claimantProfileId: null, outcome: null, reasons: [] };
     } else {
-      const claimant = await tx.claimantProfile.findUniqueOrThrow({
-        where: { id: claimantProfileId },
-        select: { identityVerificationStatus: true },
+      const restrictedClaims = await tx.claim.findMany({
+        where: { claimantId: claimantProfileId, status: 'RESTRICTED' },
       });
-
-      let allReactivated = true;
-      const failureReasons = new Set<string>();
-      for (const claim of restrictedClaims) {
-        await tx.claim.update({ where: { id: claim.id }, data: { status: 'REEVALUATION_REQUIRED' } });
-        const checkFailures = evaluateStructuralEligibility(claim, claimant, now);
-        if (checkFailures.length === 0) {
-          await tx.claim.update({ where: { id: claim.id }, data: { status: 'ACTIVE' } });
-        } else {
-          allReactivated = false;
-          checkFailures.forEach((f) => failureReasons.add(f));
+      if (restrictedClaims.length === 0) {
+        resultData = { employmentEventId: separationEvent.id, claimantProfileId, outcome: null, reasons: [] };
+      } else {
+        // "Other active employment": walk every other employer's events for
+        // this claimant chronologically, tracking which employers are
+        // currently "open" (a HIRE with no later SEPARATION at that same
+        // employer). This employer's own history is excluded — we're asking
+        // whether the claimant is employed *elsewhere*.
+        const otherEvents = await tx.employmentEvent.findMany({
+          where: { matchedClaimantProfileId: claimantProfileId, employerId: { not: dueEvent.employerId } },
+          select: { employerId: true, type: true, eventDate: true, employer: { select: { companyName: true } } },
+          orderBy: { eventDate: 'asc' },
+        });
+        const openEmployers = new Map<string, string | null>();
+        for (const event of otherEvents) {
+          if (event.type === 'HIRE') openEmployers.set(event.employerId, event.employer.companyName);
+          else openEmployers.delete(event.employerId);
         }
+
+        let outcome: ExpirationOutcome;
+        let reasons: string[];
+
+        if (openEmployers.size > 0) {
+          const [otherEmployerName] = openEmployers.values();
+          outcome = 'RETAINED_RESTRICTED';
+          reasons = [`Still employed at ${otherEmployerName ?? 'another employer'}`];
+        } else {
+          const claimant = await tx.claimantProfile.findUniqueOrThrow({
+            where: { id: claimantProfileId },
+            select: { identityVerificationStatus: true },
+          });
+
+          let allReactivated = true;
+          const failureReasons = new Set<string>();
+          for (const restrictedClaim of restrictedClaims) {
+            await tx.claim.update({ where: { id: restrictedClaim.id }, data: { status: 'REEVALUATION_REQUIRED' } });
+            const checkFailures = evaluateStructuralEligibility(restrictedClaim, claimant, now);
+            if (checkFailures.length === 0) {
+              await tx.claim.update({ where: { id: restrictedClaim.id }, data: { status: 'ACTIVE' } });
+            } else {
+              allReactivated = false;
+              checkFailures.forEach((f) => failureReasons.add(f));
+            }
+          }
+          outcome = allReactivated ? 'REACTIVATED' : 'REEVALUATION_REQUIRED';
+          reasons = [...failureReasons];
+        }
+
+        await tx.message.create({
+          data: {
+            claimantId: claimantProfileId,
+            caseworkerId: null,
+            subject: MESSAGE_SUBJECTS[outcome],
+            body: buildMessageBody(outcome, dueEvent.employer.companyName, reasons),
+          },
+        });
+
+        resultData = { employmentEventId: separationEvent.id, claimantProfileId, outcome, reasons };
       }
-      outcome = allReactivated ? 'REACTIVATED' : 'REEVALUATION_REQUIRED';
-      reasons = [...failureReasons];
     }
 
-    await tx.message.create({
+    // Written via tx (not the standalone writeAuditLog helper) so the audit
+    // record is atomic with the SEPARATION event, the separationTriggeredAt
+    // stamp, and any claim/message writes above: either all of it commits
+    // together, or none of it does. A post-commit audit write risks a real,
+    // legally-consequential claim status change existing with zero
+    // corresponding AuditLog row if the write failed after commit — and
+    // since separationTriggeredAt would already be set, the due-event SELECT
+    // would never re-select it for a retry.
+    await tx.auditLog.create({
       data: {
-        claimantId: claimantProfileId,
-        caseworkerId: null,
-        subject: MESSAGE_SUBJECTS[outcome],
-        body: buildMessageBody(outcome, dueEvent.employer.companyName, reasons),
+        actorUserId,
+        action: 'EMPLOYMENT_EXPIRATION_PROCESSED',
+        targetEntity: 'EmploymentEvent',
+        targetId: resultData.employmentEventId,
+        metadata: {
+          outcome: resultData.outcome,
+          reasons: resultData.reasons,
+          triggerSource: trigger.source,
+        } as Prisma.InputJsonValue,
       },
     });
 
-    return { employmentEventId: separationEvent.id, claimantProfileId, outcome, reasons };
+    return resultData;
   });
 
   return result;
@@ -200,22 +248,21 @@ export async function runEmploymentExpirationCheck(trigger: Trigger): Promise<Ex
 
   for (const dueEvent of dueEvents) {
     try {
-      const result = await processDueEvent(dueEvent, trigger, now);
+      const result = await processDueEvent(dueEvent, trigger, now, actorUserId);
       summary.separationsCreated += 1;
       summary.results.push(result);
-
-      await writeAuditLog({
-        actorUserId,
-        action: 'EMPLOYMENT_EXPIRATION_PROCESSED',
-        targetEntity: 'EmploymentEvent',
-        targetId: result.employmentEventId,
-        metadata: { outcome: result.outcome, reasons: result.reasons, triggerSource: trigger.source },
-      });
 
       if (result.outcome === 'RETAINED_RESTRICTED') summary.claimsRetainedRestricted += 1;
       else if (result.outcome === 'REEVALUATION_REQUIRED') summary.claimsSentToReevaluation += 1;
       else if (result.outcome === 'REACTIVATED') summary.claimsReactivated += 1;
     } catch (err) {
+      if (err instanceof AlreadyClaimedError) {
+        // A concurrent invocation already claimed this due event between
+        // our SELECT and this event's own transaction — not a failure,
+        // just skip it. That other run is (or already has) fully processed
+        // it, including its own audit log entry.
+        continue;
+      }
       summary.failures.push({
         employmentEventId: dueEvent.id,
         error: err instanceof Error ? err.message : 'Unknown error',

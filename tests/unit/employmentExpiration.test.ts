@@ -358,8 +358,67 @@ describe('runEmploymentExpirationCheck', () => {
     const separation = await prisma.employmentEvent.findFirst({ where: { employerId: employerProfileId, type: 'SEPARATION' } });
     if (separation) employmentEventIds.push(separation.id);
 
+    // The audit log write happens inside the same per-event transaction as
+    // the SEPARATION event, separationTriggeredAt stamp, and claim/message
+    // writes (see processDueEvent) — so it's atomic with them. Proof here:
+    // the rejected second $transaction call produced zero orphan audit
+    // rows; only the one event that actually committed wrote a log entry.
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { actorUserId: systemActorUserId, action: 'EMPLOYMENT_EXPIRATION_PROCESSED' },
+    });
+    expect(auditLogs).toHaveLength(1);
+    expect(auditLogs[0].targetId).toBe(separation!.id);
+
     await prisma.claim.delete({ where: { id: secondClaim.id } });
     await prisma.claimantProfile.delete({ where: { id: secondClaimantProfile.id } });
     await prisma.user.delete({ where: { id: secondClaimantUser.id } });
+  });
+
+  it('does not double-process a due event that a concurrent run claims first', async () => {
+    // Simulates two overlapping runEmploymentExpirationCheck invocations
+    // (e.g. a scheduled run and a manually-triggered one) both selecting the
+    // same due HIRE event before either commits. Here, "the other run"
+    // claims the event by stamping separationTriggeredAt directly (a raw
+    // update, standing in for that other invocation's own transaction)
+    // between this run's due-event SELECT and this event's own per-event
+    // transaction — reached by hooking the SELECT itself via a spy, since
+    // that's the exact window processDueEvent's own updateMany-based guard
+    // (the AlreadyClaimedError path) is meant to close.
+    await createRestrictedClaim();
+    const hireEvent = await createDueHireEvent();
+
+    const originalFindMany = prisma.employmentEvent.findMany.bind(prisma.employmentEvent);
+    const findManySpy = vi
+      .spyOn(prisma.employmentEvent, 'findMany')
+      .mockImplementationOnce((async (args: unknown) => {
+        const dueEvents = await originalFindMany(args as never);
+        await prisma.employmentEvent.update({
+          where: { id: hireEvent.id },
+          data: { separationTriggeredAt: new Date() },
+        });
+        return dueEvents;
+      }) as typeof prisma.employmentEvent.findMany);
+
+    const summary = await runEmploymentExpirationCheck({ source: 'SYSTEM_SCHEDULED' });
+    findManySpy.mockRestore();
+
+    // Selected (the outer SELECT ran before the race), but not processed:
+    // the per-event transaction's own guard caught the race and rolled
+    // back, and AlreadyClaimedError is treated as a benign skip, not a
+    // failure.
+    expect(summary.recordsEvaluated).toBe(1);
+    expect(summary.separationsCreated).toBe(0);
+    expect(summary.failures).toEqual([]);
+
+    const separation = await prisma.employmentEvent.findFirst({ where: { employerId: employerProfileId, type: 'SEPARATION' } });
+    expect(separation).toBeNull();
+
+    const claim = await prisma.claim.findUnique({ where: { id: claimIds[0] } });
+    expect(claim?.status).toBe('RESTRICTED');
+
+    const auditLogs = await prisma.auditLog.findMany({
+      where: { actorUserId: systemActorUserId, action: 'EMPLOYMENT_EXPIRATION_PROCESSED' },
+    });
+    expect(auditLogs).toHaveLength(0);
   });
 });
