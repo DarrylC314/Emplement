@@ -130,6 +130,27 @@ enum InterviewStatus {
   DECLINED
 }
 
+enum CredentialType {
+  EDUCATION
+  MILITARY_SERVICE
+  LAW_ENFORCEMENT
+  CERTIFICATION
+  OTHER
+}
+
+enum CredentialRequestStatus {
+  PENDING_AUTHORIZATION
+  AUTHORIZED
+  CONFIRMED
+  NO_RECORD_FOUND
+  DECLINED
+}
+
+enum CredentialReportingMethod {
+  REQUEST_RESPONSE
+  PROACTIVE_AGREEMENT
+}
+
 model User {
   id           String   @id @default(cuid())
   email        String   @unique
@@ -146,6 +167,9 @@ model User {
   uploadedDocuments Document[]          @relation("DocumentUploader")
   dismissedEmploymentEvents EmploymentEvent[] @relation("EmploymentEventDismissedBy")
   triggeredEmploymentEvents EmploymentEvent[] @relation("EmploymentEventTriggeredBy")
+  requestedCredentialVerifications CredentialVerificationRequest[] @relation("CredentialVerificationRequestedBy")
+  respondedCredentialVerifications CredentialVerificationRequest[] @relation("CredentialVerificationRespondedBy")
+  dismissedCredentialRecords CredentialRecord[]
 }
 
 model ClaimantProfile {
@@ -170,6 +194,8 @@ model ClaimantProfile {
   messages                Message[]                     @relation("ClaimantMessages")
   matchedEmploymentEvents EmploymentEvent[]
   candidateProfile        CandidateProfile?
+  credentialRecords              CredentialRecord[]
+  credentialVerificationRequests CredentialVerificationRequest[]
 }
 
 model IdentityVerificationAttempt {
@@ -332,9 +358,17 @@ model EmployerProfile {
   companyName        String?
   verificationStatus VerificationStatus @default(PENDING)
   createdAt          DateTime           @default(now())
+  // Gates the proactive credential-reporting path (POST
+  // /api/employer/credentials) — an org can be VERIFIED without this being
+  // true. Admin-set only in this pass: no self-service UI, matching how the
+  // design spec scoped it (a real, out-of-band "lawful reporting agreement"
+  // precedes flipping this flag).
+  credentialReportingAgreement Boolean @default(false)
 
-  employmentEvents EmploymentEvent[]
-  jobPostings      JobPosting[]
+  employmentEvents               EmploymentEvent[]
+  jobPostings                    JobPosting[]
+  credentialRecords              CredentialRecord[]
+  credentialVerificationRequests CredentialVerificationRequest[]
 }
 
 model EmploymentEvent {
@@ -364,6 +398,53 @@ model EmploymentEvent {
   triggerSource         TriggerSource?
   triggeredByUserId     String?
   triggeredByUser       User?          @relation("EmploymentEventTriggeredBy", fields: [triggeredByUserId], references: [id])
+}
+
+model CredentialVerificationRequest {
+  id                 String                   @id @default(cuid())
+  claimantProfileId  String
+  claimantProfile    ClaimantProfile          @relation(fields: [claimantProfileId], references: [id])
+  organizationId     String
+  organization       EmployerProfile          @relation(fields: [organizationId], references: [id])
+  credentialType     CredentialType
+  requestedTitle     String?
+  requestedByUserId  String
+  requestedByUser    User                     @relation("CredentialVerificationRequestedBy", fields: [requestedByUserId], references: [id])
+  status             CredentialRequestStatus  @default(PENDING_AUTHORIZATION)
+  authorizedAt       DateTime?
+  declinedAt         DateTime?
+  respondedAt        DateTime?
+  respondedByUserId  String?
+  respondedByUser    User?                    @relation("CredentialVerificationRespondedBy", fields: [respondedByUserId], references: [id])
+  responseNote       String?
+  resultingCredentialRecordId String?         @unique
+  resultingCredentialRecord   CredentialRecord? @relation(fields: [resultingCredentialRecordId], references: [id])
+  createdAt          DateTime                 @default(now())
+}
+
+model CredentialRecord {
+  id                       String                     @id @default(cuid())
+  organizationId           String
+  organization             EmployerProfile            @relation(fields: [organizationId], references: [id])
+  type                     CredentialType
+  title                    String
+  eventDate                DateTime
+  detailsSchemaVersion     Int                        @default(1)
+  details                  Json
+  // Nullable: only ever populated for the proactive path, where it's the
+  // matching key (mirroring EmploymentEvent.ssnHash). A request-response-
+  // originated record is already matched via matchedClaimantProfileId
+  // directly — no SSN needed, and the claimant's own ssnHash may not even
+  // exist yet if they haven't completed identity verification.
+  ssnHash                  String?
+  matchedClaimantProfileId String?
+  matchedClaimantProfile   ClaimantProfile?           @relation(fields: [matchedClaimantProfileId], references: [id])
+  reportedVia              CredentialReportingMethod
+  createdAt                DateTime                   @default(now())
+  dismissedAt              DateTime?
+  dismissedByUserId        String?
+  dismissedBy              User?                      @relation(fields: [dismissedByUserId], references: [id])
+  sourceRequest            CredentialVerificationRequest?
 }
 
 model CandidateProfile {

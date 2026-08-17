@@ -416,11 +416,39 @@ async function main() {
     });
   }
 
+  // A second VERIFIED employer, distinct from the marketplace employer
+  // above, specifically to demonstrate that any FEIN-verified organization
+  // can act as a credential-verifying org — not just employers in the
+  // ordinary sense. credentialReportingAgreement: true also lets it
+  // exercise the proactive-reporting path in tests/demos.
+  const universityPasswordHash = await bcrypt.hash('UniversityPass123', 12);
+  const universityUser = await prisma.user.upsert({
+    where: { email: 'university@example.com' },
+    update: {},
+    create: {
+      email: 'university@example.com',
+      passwordHash: universityPasswordHash,
+      role: 'EMPLOYER',
+    },
+  });
+  await prisma.employerProfile.upsert({
+    where: { userId: universityUser.id },
+    update: {},
+    create: {
+      userId: universityUser.id,
+      fein: '43-7788990',
+      companyName: 'State University',
+      verificationStatus: 'VERIFIED',
+      credentialReportingAgreement: true,
+    },
+  });
+
   console.log('Seed complete: caseworker@example.com / CaseworkerPass123');
   console.log('Seed complete: claimant@example.com / ClaimantPass123 (flagged certification, claim ACTIVE; has a PROPOSED interview to Accept/Decline on My Applications — this is the guided demo scenario claimant)');
   console.log('Seed complete: claimant2@example.com / Claimant2Pass123 (claim ACTIVE, interview already CONFIRMED — hire this applicant to see it flip to RESTRICTED)');
   console.log('Seed complete: employer@example.com / EmployerPass123 (3 postings, 2 applicants — one interview proposed, one confirmed and ready to hire)');
   console.log('Seed complete: system@emplement.internal (service account for scheduled jobs, no login)');
+  console.log('Seed complete: university@example.com / UniversityPass123 (VERIFIED organization for credential verification demos)');
 }
 
 main()
