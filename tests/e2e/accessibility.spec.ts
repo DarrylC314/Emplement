@@ -7,7 +7,15 @@ import bcrypt from 'bcryptjs';
 import { prisma } from '../../src/lib/prisma';
 import { waitForHydration } from './helpers';
 
-const PUBLIC_ROUTES = ['/', '/claim/signup', '/claim/login', '/staff/login', '/employer/signup', '/employer/login'];
+const PUBLIC_ROUTES = [
+  '/',
+  '/claim/signup',
+  '/claim/login',
+  '/staff/login',
+  '/employer/signup',
+  '/employer/login',
+  '/demo/tools',
+];
 
 async function expectNoViolations(page: Page) {
   const results = await new AxeBuilder({ page })
