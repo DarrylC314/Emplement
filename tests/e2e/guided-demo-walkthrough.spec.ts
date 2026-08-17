@@ -71,11 +71,16 @@ test('the guided demo walks through apply -> interview -> hire -> benefit status
   await expect(mainContent.getByText('Restricted')).toBeVisible();
   await expect(widget.getByText('See the benefit claim change')).toBeVisible();
 
-  // Advance to step 5: the caseworker's view of the resulting case.
+  // Advance to step 5: the caseworker's view of the resulting case, whose
+  // timeline should now tell the whole story in one place.
   await widget.getByRole('button', { name: /Next: switch to the caseworker/i }).click();
   await expect(page).toHaveURL(/\/staff\/claimants\//);
   await expect(mainContent.getByRole('heading', { name: 'Seed Claimant' })).toBeVisible();
-  await expect(mainContent.getByText(/Hired by Riverbend Logistics Inc\.? on/i)).toBeVisible();
+  await expect(mainContent.getByRole('heading', { name: 'Case timeline' })).toBeVisible();
+  await expect(mainContent.getByText('Interview accepted')).toBeVisible();
+  await expect(mainContent.getByText('Hired', { exact: true })).toBeVisible();
+  await expect(mainContent.getByText('Claim automatically restricted')).toBeVisible();
+  await expect(mainContent.getByText('Riverbend Logistics Inc.').first()).toBeVisible();
 
   // Finish the demo.
   await widget.getByRole('button', { name: 'Finish' }).click();

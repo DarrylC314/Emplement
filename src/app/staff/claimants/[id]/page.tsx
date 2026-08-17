@@ -23,11 +23,10 @@ type ClaimantDetail = {
     }[];
     caseNotes: { id: string; note: string; createdAt: string }[];
   }[];
-  matchedEmploymentEvents: {
-    id: string;
-    type: 'HIRE' | 'SEPARATION';
-    eventDate: string;
-    employer: { companyName: string | null };
+  timeline: {
+    timestamp: string;
+    title: string;
+    detail: string;
   }[];
 };
 
@@ -209,20 +208,28 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
         )}
       </section>
 
-      <section className="border border-border rounded p-4 mb-6">
-        <h2 className="font-medium mb-2">Employer-reported events</h2>
-        {claimant.matchedEmploymentEvents.length === 0 ? (
-          <p className="text-sm text-text-secondary">No employer-reported events on file.</p>
+      <section className="border border-border rounded p-4 mb-6 bg-surface-alt">
+        <h2 className="font-medium mb-3">Case timeline</h2>
+        {claimant.timeline.length === 0 ? (
+          <p className="text-sm text-text-secondary">
+            No application, interview, or employment activity on file yet.
+          </p>
         ) : (
-          <ul className="space-y-2">
-            {claimant.matchedEmploymentEvents.map((event) => (
-              <li key={event.id} className="text-sm border-t border-border pt-2">
-                {event.type === 'HIRE' ? 'Hired' : 'Separated'} by{' '}
-                {event.employer.companyName ?? 'an employer'} on{' '}
-                {new Date(event.eventDate).toLocaleDateString()}
+          <ol className="space-y-4">
+            {claimant.timeline.map((event, i) => (
+              <li key={`${event.timestamp}-${i}`} className="flex gap-3">
+                <div className="flex flex-col items-center pt-1" aria-hidden="true">
+                  <span className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
+                  {i < claimant.timeline.length - 1 && <span className="w-px flex-1 bg-border mt-1" />}
+                </div>
+                <div className="pb-1">
+                  <p className="font-medium">{event.title}</p>
+                  <p className="text-sm text-text-secondary">{event.detail}</p>
+                  <p className="text-xs text-text-secondary">{new Date(event.timestamp).toLocaleDateString()}</p>
+                </div>
               </li>
             ))}
-          </ul>
+          </ol>
         )}
       </section>
 

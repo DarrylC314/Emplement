@@ -78,6 +78,12 @@ export function GuidedDemoWidget() {
   const [linksLoading, setLinksLoading] = useState(true);
   const [pending, setPending] = useState(false);
   const [transitionError, setTransitionError] = useState<string | null>(null);
+  // Not persisted to sessionStorage: the widget itself never unmounts across
+  // client-side navigation (mounted once, globally, in providers.tsx), so
+  // plain component state already survives every step transition on its
+  // own — the same reason `collapsed` doesn't need the same pathname-driven
+  // re-read `stepNumber` does.
+  const [collapsed, setCollapsed] = useState(false);
   const headingRef = useRef<HTMLHeadingElement>(null);
   const linksRequestedRef = useRef(false);
 
@@ -131,14 +137,24 @@ export function GuidedDemoWidget() {
 
   async function goToStep(nextStepNumber: number) {
     const nextStep = DEMO_STEPS.find((s) => s.step === nextStepNumber);
-    if (!nextStep || !currentStep) return;
+    // stepNumber can't actually be null here — this function is only ever
+    // invoked from the rendered JSX below, which itself only renders after
+    // the component's own early `if (stepNumber === null) return null`
+    // above — but that narrowing doesn't survive into a closure the
+    // compiler can't prove runs synchronously with it.
+    if (!nextStep || !currentStep || stepNumber === null) return;
     setTransitionError(null);
     setPending(true);
     try {
-      const incompleteMessage = await findIncompleteStepMessage(currentStep, links);
-      if (incompleteMessage) {
-        setTransitionError(incompleteMessage);
-        return;
+      // Only advancing forward requires the current step's own action to
+      // have actually happened — going Back never depends on it.
+      const movingForward = nextStepNumber > stepNumber;
+      if (movingForward) {
+        const incompleteMessage = await findIncompleteStepMessage(currentStep, links);
+        if (incompleteMessage) {
+          setTransitionError(incompleteMessage);
+          return;
+        }
       }
       const roleChanging = nextStep.role !== currentStep.role;
       if (roleChanging) {
@@ -178,6 +194,22 @@ export function GuidedDemoWidget() {
   }
 
   const isLastStep = stepNumber === DEMO_STEPS.length;
+  const isFirstStep = stepNumber === 1;
+
+  if (collapsed) {
+    return (
+      <div className="fixed bottom-4 right-4 z-40">
+        <button
+          type="button"
+          onClick={() => setCollapsed(false)}
+          aria-label={`Expand guided demo — step ${currentStep.step} of ${DEMO_STEPS.length}`}
+          className="rounded-full bg-surface border border-border shadow-lg px-4 py-2 text-sm font-medium hover:bg-surface-alt focus-visible:outline focus-visible:outline-2"
+        >
+          Step {currentStep.step} of {DEMO_STEPS.length} — Guided demo
+        </button>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -185,9 +217,19 @@ export function GuidedDemoWidget() {
       aria-label="Guided demo"
       className="fixed bottom-4 right-4 z-40 max-w-sm bg-surface border border-border rounded p-4 shadow-lg"
     >
-      <p className="text-xs text-text-secondary mb-1">
-        Step {currentStep.step} of {DEMO_STEPS.length} — Now viewing as: {currentStep.roleLabel}
-      </p>
+      <div className="flex items-start justify-between gap-2 mb-1">
+        <p className="text-xs text-text-secondary">
+          Step {currentStep.step} of {DEMO_STEPS.length} — Now viewing as: {currentStep.roleLabel}
+        </p>
+        <button
+          type="button"
+          onClick={() => setCollapsed(true)}
+          aria-label="Collapse guided demo"
+          className="text-text-secondary hover:text-text-primary text-xs font-medium shrink-0 focus-visible:outline focus-visible:outline-2"
+        >
+          Collapse
+        </button>
+      </div>
       <h2 ref={headingRef} tabIndex={-1} className="font-bold mb-2">
         {currentStep.title}
       </h2>
@@ -203,7 +245,17 @@ export function GuidedDemoWidget() {
           {transitionError}
         </p>
       )}
-      <div className="flex gap-3">
+      <div className="flex gap-3 flex-wrap">
+        {!isFirstStep && (
+          <Button
+            type="button"
+            variant="secondary"
+            onClick={() => goToStep(stepNumber - 1)}
+            disabled={pending || linksError || linksLoading}
+          >
+            Back
+          </Button>
+        )}
         <Button
           type="button"
           onClick={() => (isLastStep ? exitDemo() : goToStep(stepNumber + 1))}

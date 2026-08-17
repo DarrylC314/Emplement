@@ -384,4 +384,76 @@ describe('GuidedDemoWidget', () => {
 
     expect(await screen.findByText('Accept a proposed interview time')).toBeInTheDocument();
   });
+
+  it('does not show a Back button on step 1', async () => {
+    mockFetchRouter();
+    sessionStorage.setItem('emplement-guided-demo-step', '1');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('Accept a proposed interview time');
+    expect(screen.queryByRole('button', { name: 'Back' })).not.toBeInTheDocument();
+  });
+
+  it('Back navigates to the previous step without requiring the current step to be complete', async () => {
+    // Step 2 has no completion requirement of its own, but this proves Back
+    // skips findIncompleteStepMessage entirely rather than happening to pass
+    // it: step 2's own instruction doesn't depend on any action, so a false
+    // pass here wouldn't be distinguishable from a real skip. What's real is
+    // that no completion-check fetch (/api/job-applications) fires for a
+    // step-1-targeted Back click, verified below by asserting only the
+    // scenario-links call happened.
+    mockFetchRouter();
+    sessionStorage.setItem('emplement-guided-demo-step', '2');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('See the interview confirmed');
+    vi.mocked(fetch).mockClear();
+
+    fireEvent.click(screen.getByRole('button', { name: 'Back' }));
+
+    await waitFor(() =>
+      expect(signInMock).toHaveBeenCalledWith('credentials', {
+        redirect: false,
+        email: 'claimant@example.com',
+        password: 'ClaimantPass123',
+      })
+    );
+    await waitFor(() => expect(pushMock).toHaveBeenCalledWith('/claim/applications'));
+    expect(sessionStorage.getItem('emplement-guided-demo-step')).toBe('1');
+    expect(vi.mocked(fetch).mock.calls.some(([u]) => u === '/api/job-applications')).toBe(false);
+  });
+
+  it('collapses to a small chip and expands back to the full panel', async () => {
+    mockFetchRouter();
+    sessionStorage.setItem('emplement-guided-demo-step', '1');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('Accept a proposed interview time');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse guided demo' }));
+
+    expect(screen.queryByRole('region', { name: 'Guided demo' })).not.toBeInTheDocument();
+    expect(screen.queryByText('Accept a proposed interview time')).not.toBeInTheDocument();
+    const chip = screen.getByRole('button', { name: /Expand guided demo — step 1 of 5/i });
+    expect(chip).toBeInTheDocument();
+
+    fireEvent.click(chip);
+
+    expect(await screen.findByText('Accept a proposed interview time')).toBeInTheDocument();
+    expect(screen.getByRole('region', { name: 'Guided demo' })).toBeInTheDocument();
+  });
+
+  it('stays collapsed with an up-to-date step label across a step transition', async () => {
+    mockFetchRouter();
+    sessionStorage.setItem('emplement-guided-demo-step', '2');
+    render(<GuidedDemoWidget />);
+    await screen.findByText('See the interview confirmed');
+
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse guided demo' }));
+    expect(screen.getByRole('button', { name: /Expand guided demo — step 2 of 5/i })).toBeInTheDocument();
+
+    fireEvent.click(screen.getByRole('button', { name: /Expand guided demo/i }));
+    fireEvent.click(screen.getByRole('button', { name: /Next: hire the candidate/i }));
+    await screen.findByText('Hire the candidate');
+    fireEvent.click(screen.getByRole('button', { name: 'Collapse guided demo' }));
+
+    expect(screen.getByRole('button', { name: /Expand guided demo — step 3 of 5/i })).toBeInTheDocument();
+  });
 });

@@ -4,6 +4,7 @@ import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { formatInterviewTime } from '@/lib/formatInterviewTime';
 
 type Interview = {
   id: string;
@@ -286,7 +287,7 @@ export default function JobPostingDetailPage({ params }: { params: { id: string 
               )}
               {a.interview?.status === 'CONFIRMED' && (
                 <p role="status" className="text-status-active-text font-medium mt-2">
-                  ✓ Interview confirmed: {new Date(a.interview.confirmedSlot!).toLocaleString()}
+                  ✓ Interview confirmed: {formatInterviewTime(a.interview.confirmedSlot!)}
                   {a.interview.location && ` — ${a.interview.location}`}
                 </p>
               )}

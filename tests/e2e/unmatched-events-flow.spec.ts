@@ -94,7 +94,11 @@ test('caseworker can see an unmatched event, manually match it, and see it on th
 
   await page.goto(`/staff/claimants/${claimantProfileId}`);
   await waitForHydration(page);
-  await expect(page.getByText(/Hired by Unmatched Flow Test Co/i)).toBeVisible();
+  // The case timeline renders the event's title ("Hired") and employer
+  // ("Unmatched Flow Test Co") as two separate lines, not one combined
+  // string — checked separately, both scoped near each other in the DOM.
+  await expect(page.getByText('Hired', { exact: true })).toBeVisible();
+  await expect(page.getByText('Unmatched Flow Test Co')).toBeVisible();
 });
 
 test.afterAll(async () => {

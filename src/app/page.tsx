@@ -58,7 +58,7 @@ export default function Home() {
     <main id="main-content" className="max-w-2xl mx-auto p-8">
       <h1 className="text-2xl font-bold">Emplement</h1>
       <p className="mt-2 mb-8 text-text-secondary">
-        Unemployment benefit claims — claimant and caseworker portals.
+        A connected unemployment and reemployment platform for claimants, employers, and workforce agencies.
       </p>
 
       <div className="mb-8 border border-border rounded p-4 bg-surface-alt">

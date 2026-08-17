@@ -3,6 +3,7 @@ import { writeAuditLog } from '@/lib/audit';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
 import { apiError, invalidBody, parseJson } from '@/lib/apiRequest';
+import { buildClaimantTimeline } from '@/lib/claimantTimeline';
 
 const EDITABLE_FIELDS = ['legalName', 'phone', 'mailingAddress'] as const;
 
@@ -73,12 +74,39 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           employer: { select: { companyName: true } },
         },
       },
+      candidateProfile: {
+        select: {
+          applications: {
+            select: {
+              id: true,
+              jobPosting: { select: { title: true, employer: { select: { companyName: true } } } },
+            },
+          },
+        },
+      },
     },
   });
 
   if (!claimant) {
     return apiError('Claimant not found', 404);
   }
+
+  // The timeline merges the audit trail (application/interview lifecycle
+  // actions — all written against a JobApplication's own id, see
+  // buildClaimantTimeline's own comments) with the employer-reported events
+  // already fetched above. A claimant with no marketplace applications at
+  // all skips this query entirely rather than running it against an empty
+  // `in: []` array.
+  const applications = claimant.candidateProfile?.applications ?? [];
+  const auditEntries =
+    applications.length === 0
+      ? []
+      : await prisma.auditLog.findMany({
+          where: { targetEntity: 'JobApplication', targetId: { in: applications.map((a) => a.id) } },
+          orderBy: { timestamp: 'asc' },
+          select: { action: true, targetId: true, timestamp: true, metadata: true },
+        });
+  const timeline = buildClaimantTimeline(applications, auditEntries, claimant.matchedEmploymentEvents);
 
   // Deliberate, per-record access, unlike the search/queue list routes: a
   // caseworker opening one specific claimant's case file is exactly the kind
@@ -95,7 +123,12 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
     targetId: params.id,
   });
 
-  return Response.json(claimant);
+  // candidateProfile and matchedEmploymentEvents were only fetched to build
+  // `timeline` above — the case page now renders that single merged story
+  // instead of a separate "employer-reported events" list, so neither raw
+  // field is part of the client-facing contract.
+  const { candidateProfile: _candidateProfile, matchedEmploymentEvents: _matchedEmploymentEvents, ...claimantWithoutRawEvents } = claimant;
+  return Response.json({ ...claimantWithoutRawEvents, timeline });
 }
 
 export async function PATCH(req: Request, { params }: { params: { id: string } }) {

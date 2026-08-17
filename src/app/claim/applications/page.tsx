@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react';
 import { useSession } from 'next-auth/react';
 import { Button } from '@/components/ui/Button';
+import { formatInterviewTime } from '@/lib/formatInterviewTime';
 
 type Slot = { id: string; startTime: string };
 type Interview = {
@@ -146,7 +147,7 @@ export default function MyApplicationsPage() {
                   <ul className="space-y-2 mb-2">
                     {a.interview.slots.map((s) => (
                       <li key={s.id} className="flex items-center gap-3">
-                        <span className="text-sm">{new Date(s.startTime).toLocaleString()}</span>
+                        <span className="text-sm">{formatInterviewTime(s.startTime)}</span>
                         <Button disabled={pendingId === a.id} onClick={() => handleAccept(a.id, s.id)}>
                           Accept
                         </Button>
@@ -163,7 +164,7 @@ export default function MyApplicationsPage() {
               )}
               {a.interview?.status === 'CONFIRMED' && (
                 <p role="status" className="text-status-active-text font-medium mt-2">
-                  ✓ Interview confirmed: {new Date(a.interview.confirmedSlot!).toLocaleString()}
+                  ✓ Interview confirmed: {formatInterviewTime(a.interview.confirmedSlot!)}
                   {a.interview.location && ` — ${a.interview.location}`}
                 </p>
               )}

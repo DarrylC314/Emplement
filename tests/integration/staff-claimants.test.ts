@@ -178,8 +178,10 @@ describe('staff claimant routes (search + detail)', () => {
     expect(claimant.claims[0].id).toBe(claimId);
     expect(claimant.claims[0].certifications[0].id).toBe(certificationId);
     expect(claimant.claims[0].caseNotes[0].id).toBe(caseNoteId);
-    expect(claimant.matchedEmploymentEvents).toHaveLength(1);
-    expect(claimant.matchedEmploymentEvents[0].type).toBe('HIRE');
+    expect(claimant.matchedEmploymentEvents).toBeUndefined();
+    expect(claimant.timeline).toHaveLength(1);
+    expect(claimant.timeline[0].title).toBe('Hired');
+    expect(claimant.timeline[0].detail).toBe('Test Employer Corp');
   });
 
   it('never leaks passwordHash or ssnEncrypted from the detail route', async () => {
