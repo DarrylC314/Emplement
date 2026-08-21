@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { proactiveCredentialReportSchema, parseCredentialDetails } from '@/lib/validation/credential';
 import { hashSSN } from '@/lib/ssnHash';
@@ -61,7 +62,7 @@ export async function POST(req: Request) {
       type: parsed.data.type,
       title: parsed.data.title,
       eventDate: new Date(parsed.data.eventDate),
-      details: parsed.data.details,
+      details: parsed.data.details as Prisma.InputJsonValue,
       ssnHash,
       matchedClaimantProfileId: matchedClaimant?.id,
       reportedVia: 'PROACTIVE_AGREEMENT',

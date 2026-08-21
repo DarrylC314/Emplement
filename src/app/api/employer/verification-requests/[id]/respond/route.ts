@@ -1,3 +1,4 @@
+import { Prisma } from '@prisma/client';
 import { prisma } from '@/lib/prisma';
 import { getServerAuthSession } from '@/lib/auth';
 import { requireRole } from '@/lib/rbac';
@@ -73,7 +74,7 @@ export async function POST(req: Request, { params }: { params: { id: string } })
             type: request.credentialType,
             title: parsed.data.title,
             eventDate: new Date(parsed.data.eventDate),
-            details: parsed.data.details,
+            details: parsed.data.details as Prisma.InputJsonValue,
             matchedClaimantProfileId: request.claimantProfileId,
             reportedVia: 'REQUEST_RESPONSE',
           },

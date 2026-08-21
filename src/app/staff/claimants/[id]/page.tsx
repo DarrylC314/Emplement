@@ -295,7 +295,12 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
               <li key={c.id} className="text-sm border-t border-border pt-2">
                 <p className="font-medium">{c.title}</p>
                 <p className="text-text-secondary">
-                  {c.organization.companyName} — {new Date(c.eventDate).toLocaleDateString()}
+                  {/* Organization name in its own element so it has an exact,
+                      isolated accessible text match distinct from the
+                      em-dash-joined date next to it (see
+                      tests/e2e/credential-verification.spec.ts, which asserts
+                      on the organization name with { exact: true }). */}
+                  <span>{c.organization.companyName}</span> — {new Date(c.eventDate).toLocaleDateString()}
                 </p>
               </li>
             ))}
