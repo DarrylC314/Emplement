@@ -27,6 +27,7 @@ const EMPLOYER_LINKS: NavLink[] = [
   { href: '/employer/verify-fein', label: 'Verify your company' },
   { href: '/employer/job-postings', label: 'Job postings' },
   { href: '/employer/browse-candidates', label: 'Browse candidates' },
+  { href: '/employer/verification-requests', label: 'Verification requests' },
 ];
 
 /**
