@@ -4,6 +4,8 @@ import { useCallback, useEffect, useState } from 'react';
 import { StatusBadge } from '@/components/ui/StatusBadge';
 import { Button } from '@/components/ui/Button';
 import { TextField } from '@/components/ui/TextField';
+import { Select } from '@/components/ui/Select';
+import { OrganizationPicker, type Organization } from '@/components/credentials/OrganizationPicker';
 
 type ClaimantDetail = {
   id: string;
@@ -27,6 +29,23 @@ type ClaimantDetail = {
     timestamp: string;
     title: string;
     detail: string;
+  }[];
+  credentialRecords: {
+    id: string;
+    type: string;
+    title: string;
+    eventDate: string;
+    details: Record<string, unknown>;
+    organization: { companyName: string | null };
+  }[];
+  credentialVerificationRequests: {
+    id: string;
+    credentialType: string;
+    requestedTitle: string | null;
+    status: 'PENDING_AUTHORIZATION' | 'AUTHORIZED' | 'CONFIRMED' | 'NO_RECORD_FOUND' | 'DECLINED';
+    responseNote: string | null;
+    createdAt: string;
+    organization: { companyName: string | null };
   }[];
 };
 
@@ -65,6 +84,11 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
   const [messageBody, setMessageBody] = useState('');
   const [messageSent, setMessageSent] = useState(false);
   const [messageError, setMessageError] = useState<string | null>(null);
+  const [requestOrganization, setRequestOrganization] = useState<Organization | null>(null);
+  const [requestCredentialType, setRequestCredentialType] = useState('');
+  const [requestTitle, setRequestTitle] = useState('');
+  const [requestError, setRequestError] = useState<string | null>(null);
+  const [requestSuccess, setRequestSuccess] = useState(false);
 
   // Fetches the single claimant by id. Previously this called the *search*
   // route (`?q=`), which returns at most 25 unordered rows — claimants outside
@@ -157,6 +181,34 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
     setMessageSent(true);
   }
 
+  async function handleRequestVerification(e: React.FormEvent) {
+    e.preventDefault();
+    setRequestError(null);
+    setRequestSuccess(false);
+    if (!requestOrganization || !requestCredentialType) {
+      setRequestError('Select an organization and a credential type.');
+      return;
+    }
+    const res = await fetch('/api/verification-requests', {
+      method: 'POST',
+      body: JSON.stringify({
+        claimantProfileId: params.id,
+        organizationId: requestOrganization.id,
+        credentialType: requestCredentialType,
+        requestedTitle: requestTitle || undefined,
+      }),
+    });
+    if (!res.ok) {
+      setRequestError('We could not send that request. Please try again.');
+      return;
+    }
+    setRequestOrganization(null);
+    setRequestCredentialType('');
+    setRequestTitle('');
+    setRequestSuccess(true);
+    loadClaimant();
+  }
+
   if (loading) {
     return (
       <main id="main-content" className="p-8">
@@ -231,6 +283,70 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
             ))}
           </ol>
         )}
+      </section>
+
+      <section className="border border-border rounded p-4 mb-6">
+        <h2 className="font-medium mb-3">Verified credentials</h2>
+        {claimant.credentialRecords.length === 0 ? (
+          <p className="text-sm text-text-secondary mb-4">No verified credentials on file yet.</p>
+        ) : (
+          <ul className="space-y-2 mb-4">
+            {claimant.credentialRecords.map((c) => (
+              <li key={c.id} className="text-sm border-t border-border pt-2">
+                <p className="font-medium">{c.title}</p>
+                <p className="text-text-secondary">
+                  {c.organization.companyName} — {new Date(c.eventDate).toLocaleDateString()}
+                </p>
+              </li>
+            ))}
+          </ul>
+        )}
+
+        {claimant.credentialVerificationRequests.length > 0 && (
+          <>
+            <h3 className="font-medium mb-2 text-sm">Requests</h3>
+            <ul className="space-y-2 mb-4">
+              {claimant.credentialVerificationRequests.map((r) => (
+                <li key={r.id} className="text-sm border-t border-border pt-2">
+                  {r.organization.companyName} — {r.requestedTitle ?? r.credentialType} — {r.status}
+                  {r.status === 'NO_RECORD_FOUND' && r.responseNote && <span> ({r.responseNote})</span>}
+                </li>
+              ))}
+            </ul>
+          </>
+        )}
+
+        <h3 className="font-medium mb-2 text-sm">Request a new verification</h3>
+        {requestSuccess && <p role="status" className="mb-2 text-status-active-text">Request sent.</p>}
+        {requestError && (
+          <p role="alert" className="mb-2 text-error-text">
+            {requestError}
+          </p>
+        )}
+        <form onSubmit={handleRequestVerification} noValidate>
+          <OrganizationPicker selectedOrganization={requestOrganization} onSelect={setRequestOrganization} />
+          <Select
+            id="requestCredentialType"
+            label="Credential type"
+            value={requestCredentialType}
+            onChange={setRequestCredentialType}
+            options={[
+              { value: 'EDUCATION', label: 'Education' },
+              { value: 'MILITARY_SERVICE', label: 'Military service' },
+              { value: 'LAW_ENFORCEMENT', label: 'Law enforcement' },
+              { value: 'CERTIFICATION', label: 'Certification' },
+              { value: 'OTHER', label: 'Other' },
+            ]}
+            required
+          />
+          <TextField
+            id="requestTitle"
+            label="What are you asking them to confirm? (optional)"
+            value={requestTitle}
+            onChange={setRequestTitle}
+          />
+          <Button type="submit">Send request</Button>
+        </form>
       </section>
 
       {claimant.claims.map((claim) => (

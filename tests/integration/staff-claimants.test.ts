@@ -182,6 +182,8 @@ describe('staff claimant routes (search + detail)', () => {
     expect(claimant.timeline).toHaveLength(1);
     expect(claimant.timeline[0].title).toBe('Hired');
     expect(claimant.timeline[0].detail).toBe('Test Employer Corp');
+    expect(claimant.credentialRecords).toEqual([]);
+    expect(claimant.credentialVerificationRequests).toEqual([]);
   });
 
   it('never leaks passwordHash or ssnEncrypted from the detail route', async () => {

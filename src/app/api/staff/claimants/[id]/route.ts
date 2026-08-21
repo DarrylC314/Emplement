@@ -85,6 +85,29 @@ export async function GET(_req: Request, { params }: { params: { id: string } })
           },
         },
       },
+      credentialRecords: {
+        orderBy: { eventDate: 'desc' },
+        select: {
+          id: true,
+          type: true,
+          title: true,
+          eventDate: true,
+          details: true,
+          organization: { select: { companyName: true } },
+        },
+      },
+      credentialVerificationRequests: {
+        orderBy: { createdAt: 'desc' },
+        select: {
+          id: true,
+          credentialType: true,
+          requestedTitle: true,
+          status: true,
+          responseNote: true,
+          createdAt: true,
+          organization: { select: { companyName: true } },
+        },
+      },
     },
   });
 
