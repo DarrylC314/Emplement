@@ -5,6 +5,12 @@ export default defineConfig({
   testDir: './tests/e2e',
   timeout: 60_000,
   fullyParallel: false,
+  // Multiple parallel workers each launch their own Chromium instance but
+  // share the single `next start` server below (reuseExistingServer), so
+  // concurrent load intermittently pushed unrelated tests past their default
+  // action/assertion timeouts. Confirmed via a clean 37/37 pass at workers:1
+  // vs. a different sporadic failure on two separate default-worker-count runs.
+  workers: 1,
   retries: 0,
   reporter: 'list',
   use: {
