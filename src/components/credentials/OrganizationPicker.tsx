@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { TextField } from '@/components/ui/TextField';
 
 export type Organization = { id: string; companyName: string };
@@ -21,17 +21,40 @@ export function OrganizationPicker({ selectedOrganization, onSelect, error }: Or
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<Organization[]>([]);
   const [searching, setSearching] = useState(false);
+  const [searchError, setSearchError] = useState<string | null>(null);
+  // Tracks the most recently issued query so a slow response to an older,
+  // shorter query can't overwrite the results of a newer one that resolved
+  // first (out-of-order responses are possible since we fire on every
+  // keystroke without debouncing).
+  const latestQuery = useRef('');
 
   async function handleQueryChange(value: string) {
     setQuery(value);
+    latestQuery.current = value;
     if (value.trim().length < 2) {
       setResults([]);
+      setSearchError(null);
+      setSearching(false);
       return;
     }
     setSearching(true);
-    const res = await fetch(`/api/organizations?q=${encodeURIComponent(value)}`);
-    setSearching(false);
-    if (res.ok) setResults(await res.json());
+    setSearchError(null);
+    try {
+      const res = await fetch(`/api/organizations?q=${encodeURIComponent(value)}`);
+      if (latestQuery.current !== value) return;
+      if (res.ok) {
+        setResults(await res.json());
+      } else {
+        setResults([]);
+        setSearchError('Something went wrong searching for organizations. Please try again.');
+      }
+    } catch {
+      if (latestQuery.current !== value) return;
+      setResults([]);
+      setSearchError('Something went wrong searching for organizations. Please try again.');
+    } finally {
+      if (latestQuery.current === value) setSearching(false);
+    }
   }
 
   if (selectedOrganization) {
@@ -64,6 +87,11 @@ export function OrganizationPicker({ selectedOrganization, onSelect, error }: Or
         required
       />
       {searching && <p className="text-sm text-text-secondary">Searching…</p>}
+      {!searching && searchError && (
+        <p role="alert" className="text-sm text-error-text">
+          {searchError}
+        </p>
+      )}
       {results.length > 0 && (
         <ul className="border border-border rounded mt-1">
           {results.map((org) => (
