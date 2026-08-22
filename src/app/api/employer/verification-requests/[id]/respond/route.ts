@@ -42,11 +42,18 @@ export async function POST(req: Request, { params }: { params: { id: string } })
     return apiError('This request is not awaiting a response', 409);
   }
 
+  // Populated only on the confirm branch; holds the *validated* (schema-
+  // stripped) details, never the raw client payload — see this task's
+  // brief on why parsed.data.details must not be persisted directly.
+  let confirmedDetails: unknown;
+  let confirmedSchemaVersion: number | undefined;
   if (parsed.data.confirmed) {
     const detailsResult = parseCredentialDetails(request.credentialType, parsed.data.details);
     if (!detailsResult.success) {
       return Response.json({ errors: detailsResult.error.flatten() }, { status: 400 });
     }
+    confirmedDetails = detailsResult.data;
+    confirmedSchemaVersion = detailsResult.data.schemaVersion;
   }
 
   let result;
@@ -74,7 +81,8 @@ export async function POST(req: Request, { params }: { params: { id: string } })
             type: request.credentialType,
             title: parsed.data.title,
             eventDate: new Date(parsed.data.eventDate),
-            details: parsed.data.details as Prisma.InputJsonValue,
+            details: confirmedDetails as Prisma.InputJsonValue,
+            detailsSchemaVersion: confirmedSchemaVersion,
             matchedClaimantProfileId: request.claimantProfileId,
             reportedVia: 'REQUEST_RESPONSE',
           },
