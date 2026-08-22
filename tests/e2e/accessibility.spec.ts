@@ -267,6 +267,14 @@ test.describe('claimant pages', () => {
     await expect(page.getByRole('heading', { name: /job postings/i })).toBeVisible();
     await expectNoViolations(page);
   });
+
+  test('/claim/verification-requests has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/claim/verification-requests');
+    await expect(page.getByRole('heading', { name: /verification requests/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
 });
 
 test.describe('staff pages', () => {
@@ -304,6 +312,14 @@ test.describe('staff pages', () => {
   }) => {
     await page.goto('/staff/unmatched-events');
     await expect(page.getByRole('heading', { name: /unmatched employer events/i })).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('/staff/unmatched-credentials has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/staff/unmatched-credentials');
+    await expect(page.getByRole('heading', { name: /unmatched credentials/i })).toBeVisible();
     await expectNoViolations(page);
   });
 });
@@ -351,6 +367,14 @@ test.describe('employer pages', () => {
     await expect(page.getByText('A11y Fixture Candidate')).toBeVisible();
     await page.getByRole('button', { name: /propose interview/i }).click();
     await expect(page.getByLabel('Slot 1')).toBeVisible();
+    await expectNoViolations(page);
+  });
+
+  test('/employer/verification-requests has no automatically detectable accessibility violations', async ({
+    page,
+  }) => {
+    await page.goto('/employer/verification-requests');
+    await expect(page.getByRole('heading', { name: /verification requests/i })).toBeVisible();
     await expectNoViolations(page);
   });
 });
