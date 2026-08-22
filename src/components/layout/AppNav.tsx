@@ -20,6 +20,7 @@ const CLAIMANT_LINKS: NavLink[] = [
 const STAFF_LINKS: NavLink[] = [
   { href: '/staff/dashboard', label: 'Staff dashboard' },
   { href: '/staff/unmatched-events', label: 'Unmatched events' },
+  { href: '/staff/unmatched-credentials', label: 'Unmatched credentials' },
 ];
 
 const EMPLOYER_LINKS: NavLink[] = [

@@ -322,7 +322,11 @@ export default function ClaimantCasePage({ params }: { params: { id: string } })
         )}
 
         <h3 className="font-medium mb-2 text-sm">Request a new verification</h3>
-        {requestSuccess && <p role="status" className="mb-2 text-status-active-text">Request sent.</p>}
+        {requestSuccess && (
+          <p role="status" className="mb-2 text-status-active-text">
+            Request created — awaiting the claimant&apos;s authorization before it goes to the organization.
+          </p>
+        )}
         {requestError && (
           <p role="alert" className="mb-2 text-error-text">
             {requestError}
